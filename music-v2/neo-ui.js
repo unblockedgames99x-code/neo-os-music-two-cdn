@@ -86,6 +86,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const cdnRunner = Boolean(document.querySelector('meta[name="neo-runner"]'));
     const searchEndpoint = 'https://lol.samidy.workers.dev/search?s=';
     const trackEndpoint = 'https://lol.samidy.workers.dev/track/?quality=HIGH&id=';
+    const silentUnlockSource = 'data:audio/wav;base64,UklGRmQBAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YUABAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgA==';
     const fallback = {
         searchController: null,
         playController: null,
@@ -96,6 +97,8 @@ document.addEventListener('DOMContentLoaded', () => {
         shaka: null,
         shakaModule: null,
         manifestUrl: '',
+        primed: false,
+        primeLoop: false,
         active: false,
         requestId: 0,
         progressFrame: 0
@@ -128,6 +131,27 @@ document.addEventListener('DOMContentLoaded', () => {
             await new Promise((resolve) => window.setTimeout(resolve, 250 * (attempt + 1)));
         }
         throw lastError || new Error('Music service did not respond.');
+    };
+
+    const fetchTrackStream = async (trackId, signal) => {
+        let url = `${trackEndpoint}${encodeURIComponent(trackId)}`;
+        for (let poll = 0; poll < 6; poll += 1) {
+            const payload = await fetchJsonWithRetry(url, {
+                mode: 'cors',
+                cache: 'no-store',
+                signal,
+                headers: { Accept: 'application/json' }
+            });
+            const stream = payload?.data || payload;
+            if (stream?.manifest && /dash\+xml/i.test(stream.manifestMimeType || '')) return stream;
+            if (payload?.status === 'pending' && payload.statusUrl) {
+                url = new URL(payload.statusUrl, 'https://lol.samidy.workers.dev/').href;
+            } else {
+                url = `${trackEndpoint}${encodeURIComponent(trackId)}&refresh=${Date.now()}-${poll}`;
+            }
+            await new Promise((resolve) => window.setTimeout(resolve, 300 * (poll + 1)));
+        }
+        throw new Error('No compatible audio stream is available for this track.');
     };
 
     const showSearchPage = (query) => {
@@ -207,6 +231,17 @@ document.addEventListener('DOMContentLoaded', () => {
         return shaka;
     };
 
+    const primeAudio = (audio) => {
+        if (fallback.primed || fallback.shaka || !audio.paused) return;
+        fallback.primed = true;
+        fallback.primeLoop = audio.loop;
+        audio.src = silentUnlockSource;
+        audio.loop = true;
+        audio.play().catch((error) => {
+            if (error?.name === 'NotAllowedError') window.__neoMusicAudioGate?.request?.(audio);
+        });
+    };
+
     const tryPlay = async (audio) => {
         try {
             await audio.play();
@@ -229,25 +264,19 @@ document.addEventListener('DOMContentLoaded', () => {
         fallback.track = track;
         fallback.index = index;
         fallback.active = true;
+        if (fallback.shaka) audio.pause();
+        else primeAudio(audio);
         updateFallbackPlayerUi();
         setFallbackError(`Loading ${track.title || 'track'}…`);
         try {
             document.querySelectorAll('audio, video').forEach((media) => {
                 if (media !== audio && !media.muted) media.pause();
             });
-            audio.pause();
-            const payload = await fetchJsonWithRetry(`${trackEndpoint}${encodeURIComponent(track.id)}`, {
-                mode: 'cors',
-                cache: 'no-store',
-                signal: fallback.playController.signal,
-                headers: { Accept: 'application/json' }
-            });
-            const stream = payload?.data || payload;
-            if (!stream?.manifest || !/dash\+xml/i.test(stream.manifestMimeType || '')) {
-                throw new Error('No compatible audio stream is available for this track.');
-            }
+            const stream = await fetchTrackStream(track.id, fallback.playController.signal);
             if (requestId !== fallback.requestId) return;
             const shaka = await getShaka();
+            audio.pause();
+            audio.loop = fallback.primeLoop;
             if (!fallback.shaka) {
                 fallback.shaka = new shaka.Player();
                 fallback.shaka.configure({
@@ -542,3 +571,4 @@ document.addEventListener(
     },
     true
 );
+
