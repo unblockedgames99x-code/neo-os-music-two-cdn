@@ -139,6 +139,24 @@
     return media ? clamp(media.volume, 0, 1) : 1;
   }
 
+  function restoreMediaPreferences(media) {
+    if (!media) return;
+    try {
+      var savedVolume = Number(localStorage.getItem("volume"));
+      if (Number.isFinite(savedVolume)) media.volume = clamp(savedVolume, 0, 1);
+      var savedMuted = localStorage.getItem("muted");
+      if (savedMuted === "true" || savedMuted === "false") media.muted = savedMuted === "true";
+    } catch (error) {}
+  }
+
+  function saveMediaPreferences(media) {
+    if (!media) return;
+    try {
+      localStorage.setItem("volume", String(clamp(media.volume, 0, 1)));
+      localStorage.setItem("muted", String(Boolean(media.muted)));
+    } catch (error) {}
+  }
+
   function currentState() {
     var media = activeMedia();
     var info = metadata();
@@ -183,6 +201,9 @@
       var stream = capture.call(media);
       if (!stream || !stream.getAudioTracks || !stream.getAudioTracks().length) throw new Error("No audio track to analyse");
       analysisContext = new AudioContextClass({ latencyHint: "playback" });
+      if (window.__neoMusicAudioGate && typeof window.__neoMusicAudioGate.registerContext === "function") {
+        window.__neoMusicAudioGate.registerContext(analysisContext);
+      }
       analysisSource = analysisContext.createMediaStreamSource(stream);
       analysisAnalyser = analysisContext.createAnalyser();
       analysisAnalyser.fftSize = 512;
@@ -261,6 +282,10 @@
   }
 
   function postLevels() {
+    if (document.hidden) {
+      if (analysisContext && analysisContext.state === "running") analysisContext.suspend().catch(function () {});
+      return;
+    }
     var media = activeMedia();
     var state = {
       playing: Boolean(!stopped && media && !media.paused && !media.ended),
@@ -293,7 +318,7 @@
     try { localStorage.setItem("volume", String(value)); } catch (error) {}
     mediaElements().forEach(function (media) {
       media.muted = false;
-      if (!bar) media.volume = value;
+      media.volume = value;
     });
     window.setTimeout(function () { postState(true); }, 40);
   }
@@ -350,9 +375,11 @@
   function bindMedia(media) {
     if (media.dataset.neoBridgeBound === "1") return;
     media.dataset.neoBridgeBound = "1";
+    restoreMediaPreferences(media);
     ["play", "playing", "pause", "ended", "loadedmetadata", "durationchange", "timeupdate", "volumechange", "emptied"].forEach(function (eventName) {
       media.addEventListener(eventName, function () {
         if (eventName === "play" || eventName === "playing") stopped = false;
+        if (eventName === "volumechange") saveMediaPreferences(media);
         postState(eventName !== "timeupdate");
       });
     });
@@ -363,7 +390,8 @@
   }
 
   window.addEventListener("message", function (event) {
-    if (event.source !== window.parent || event.origin !== window.location.origin) return;
+    var trustedOpaqueParent = event.origin === "null" && window.location.origin === "null";
+    if (event.source !== window.parent || (event.origin !== window.location.origin && !trustedOpaqueParent)) return;
     if (event.data && event.data.neoMusicControl) handleControl(event.data.neoMusicControl);
   });
 
@@ -371,10 +399,21 @@
     bindAll();
     postState(false);
   });
-  observer.observe(document.documentElement, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["src", "srcset", "class"] });
+  observer.observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ["src"] });
   bindAll();
-  stateTimer = window.setInterval(function () { postState(false); }, 500);
-  levelTimer = window.setInterval(postLevels, 80);
+  stateTimer = window.setInterval(function () { if (!document.hidden) postState(false); }, 750);
+  levelTimer = window.setInterval(postLevels, 100);
+  document.addEventListener("visibilitychange", function () {
+    if (document.hidden) {
+      if (analysisContext && analysisContext.state === "running") analysisContext.suspend().catch(function () {});
+    } else {
+      var media = activeMedia();
+      if (media && !media.paused && analysisContext && analysisContext.state === "suspended") {
+        analysisContext.resume().catch(function () {});
+      }
+      postState(true);
+    }
+  });
   window.addEventListener("pagehide", function () {
     window.clearInterval(stateTimer);
     window.clearInterval(levelTimer);

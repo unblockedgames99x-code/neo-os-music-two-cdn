@@ -3,6 +3,74 @@
 
     window.__NEO_MUSIC__ = true;
 
+    // Chrome and ChromeOS reject media playback until the document receives a
+    // real user gesture. Keep one gate for the whole player and retry only the
+    // media element whose play request was blocked.
+    if (!window.__neoMusicAudioGate && window.HTMLMediaElement) {
+        var nativeMediaPlay = window.HTMLMediaElement.prototype.play;
+        var pendingMedia = new Set();
+        var registeredContexts = new Set();
+
+        function resumeAudio() {
+            registeredContexts.forEach(function (context) {
+                if (!context || context.state !== "suspended") return;
+                try { context.resume().catch(function () {}); } catch (error) {}
+            });
+            pendingMedia.forEach(function (media) {
+                pendingMedia.delete(media);
+                if (!media || !media.isConnected || !media.currentSrc && !media.src) return;
+                try { nativeMediaPlay.call(media).catch(function (error) {
+                    if (error && error.name === "NotAllowedError") pendingMedia.add(media);
+                }); } catch (error) {}
+            });
+        }
+
+        window.HTMLMediaElement.prototype.play = function () {
+            var media = this;
+            var result;
+            try {
+                result = nativeMediaPlay.call(media);
+            } catch (error) {
+                if (error && error.name === "NotAllowedError") pendingMedia.add(media);
+                throw error;
+            }
+            if (result && typeof result.catch === "function") {
+                result.catch(function (error) {
+                    if (error && error.name === "NotAllowedError") pendingMedia.add(media);
+                });
+            }
+            return result;
+        };
+
+        ["pointerdown", "touchend", "keydown"].forEach(function (eventName) {
+            document.addEventListener(eventName, resumeAudio, { capture: true, passive: true });
+        });
+        window.addEventListener("pagehide", function () {
+            pendingMedia.clear();
+            registeredContexts.clear();
+        }, { once: true });
+        window.__neoMusicAudioGate = Object.freeze({
+            registerContext: function (context) {
+                if (context) registeredContexts.add(context);
+            },
+            request: function (media) {
+                if (media) pendingMedia.add(media);
+            },
+            resume: resumeAudio
+        });
+    }
+
+    // A service worker scoped to a shared CDN host can retain stale app files
+    // and trigger a second module download. Immutable jsDelivr files already
+    // provide caching, so the embedded runner intentionally skips PWA setup.
+    if (document.querySelector('meta[name="neo-runner"]') && navigator.serviceWorker) {
+        try {
+            navigator.serviceWorker.register = function () {
+                return Promise.reject(new DOMException("The CDN runner uses immutable HTTP caching.", "NotSupportedError"));
+            };
+        } catch (error) {}
+    }
+
     // The copied upstream bundle attempts to redefine Chrome's non-configurable
     // navigator.userAgent property at module evaluation time. That exception
     // aborts the whole application before search handlers are installed. Ignore

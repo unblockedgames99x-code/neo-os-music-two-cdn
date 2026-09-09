@@ -125,7 +125,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const waitForRuntime = window.setInterval(() => {
         const readySurface = [document.getElementById('home-welcome'), document.getElementById('home-content')]
             .some((element) => element && getComputedStyle(element).display !== 'none');
-        if (!readySurface || !document.getElementById('audio-player-crossfade')) return;
+        /* The current player owns #audio-player. An older integration waited
+           for the removed #audio-player-crossfade element, so the desktop
+           reported a false startup failure after ten seconds. */
+        const player = document.getElementById('audio-player') || document.getElementById('audio-player-crossfade');
+        if (!readySurface || !player || !searchForm || !searchInput) return;
         window.clearInterval(waitForRuntime);
         requestAnimationFrame(announceReady);
     }, 120);
