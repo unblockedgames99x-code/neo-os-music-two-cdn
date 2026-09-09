@@ -110,6 +110,26 @@ document.addEventListener('DOMContentLoaded', () => {
         ? `https://resources.tidal.com/images/${String(cover).replaceAll('-', '/')}/${size}x${size}.jpg`
         : new URL('./assets/appicon.png', document.baseURI).href;
 
+    const fetchJsonWithRetry = async (url, options, attempts = 4) => {
+        let lastError;
+        for (let attempt = 0; attempt < attempts; attempt += 1) {
+            try {
+                const retryUrl = new URL(url);
+                if (attempt) retryUrl.searchParams.set('neo_retry', `${Date.now()}-${attempt}`);
+                const response = await fetch(retryUrl.href, options);
+                if (response.ok) return response.json();
+                lastError = new Error(`Music service returned ${response.status}.`);
+                if (response.status < 500 || attempt === attempts - 1) throw lastError;
+            } catch (error) {
+                if (error?.name === 'AbortError') throw error;
+                lastError = error;
+                if (attempt === attempts - 1) throw error;
+            }
+            await new Promise((resolve) => window.setTimeout(resolve, 250 * (attempt + 1)));
+        }
+        throw lastError || new Error('Music service did not respond.');
+    };
+
     const showSearchPage = (query) => {
         document.querySelectorAll('.page').forEach((page) => page.classList.remove('active'));
         const page = document.getElementById('page-search');
@@ -216,14 +236,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (media !== audio && !media.muted) media.pause();
             });
             audio.pause();
-            const response = await fetch(`${trackEndpoint}${encodeURIComponent(track.id)}`, {
+            const payload = await fetchJsonWithRetry(`${trackEndpoint}${encodeURIComponent(track.id)}`, {
                 mode: 'cors',
                 cache: 'no-store',
                 signal: fallback.playController.signal,
                 headers: { Accept: 'application/json' }
             });
-            if (!response.ok) throw new Error(`Audio service returned ${response.status}.`);
-            const payload = await response.json();
             const stream = payload?.data || payload;
             if (!stream?.manifest || !/dash\+xml/i.test(stream.manifestMimeType || '')) {
                 throw new Error('No compatible audio stream is available for this track.');
@@ -328,14 +346,12 @@ document.addEventListener('DOMContentLoaded', () => {
         showSearchPage(query);
         container?.replaceChildren(makeStatus(`Searching for ${query}…`));
         try {
-            const response = await fetch(`${searchEndpoint}${encodeURIComponent(query)}`, {
+            const payload = await fetchJsonWithRetry(`${searchEndpoint}${encodeURIComponent(query)}`, {
                 mode: 'cors',
                 cache: 'force-cache',
                 signal: fallback.searchController.signal,
                 headers: { Accept: 'application/json' }
             });
-            if (!response.ok) throw new Error(`Search service returned ${response.status}.`);
-            const payload = await response.json();
             const data = payload?.data || payload;
             const tracks = Array.isArray(data?.items) ? data.items.filter((track) => track?.id && track.allowStreaming !== false) : [];
             if (query !== searchInput?.value.trim()) return;
@@ -526,4 +542,3 @@ document.addEventListener(
     },
     true
 );
-
