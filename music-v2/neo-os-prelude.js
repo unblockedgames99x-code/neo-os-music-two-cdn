@@ -476,7 +476,7 @@
 
     window.fetch = function (input, init) {
         if (isPreviewOnlyHiFiStream(input)) {
-            if (isCdnRunner) return originalFetch(input, init);
+            if (isCdnRunner || document.querySelector('meta[name="neo-runner"]')) return originalFetch(input, init);
             return fullSongResponse(input, init).catch(function (error) {
                 return originalFetch(input, init);
             });

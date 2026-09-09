@@ -198,6 +198,34 @@ a[href*="discord.gg/"] { display: none !important; }
         transform var(--transition-fast);
 }
 
+.neo-fallback-status {
+    grid-column: 1 / -1;
+    padding: 18px 16px;
+    color: var(--muted-foreground);
+    text-align: center;
+}
+
+.neo-fallback-status.error {
+    color: var(--destructive, #d95f5f);
+}
+
+.neo-fallback-track .neo-fallback-play {
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    color: var(--foreground);
+    background: transparent;
+    cursor: pointer;
+}
+
+.neo-fallback-track:is(:hover, :focus-visible) .neo-fallback-play,
+.neo-fallback-track.playing .neo-fallback-play {
+    color: var(--primary-foreground, #fff);
+    background: var(--primary, rgb(var(--highlight-rgb)));
+}
+
 .now-playing-bar {
     grid-area: player;
     width: 100% !important;
@@ -288,3 +316,4 @@ a[href*="discord.gg/"] { display: none !important; }
         padding: 10px 12px;
     }
 }
+
