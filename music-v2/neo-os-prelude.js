@@ -111,6 +111,7 @@
     } catch (error) {}
 
     var launchUrl = new URL(window.location.href);
+    var isCdnRunner = Boolean(document.querySelector('meta[name="neo-runner"]'));
     var nativeAddEventListener = window.EventTarget && window.EventTarget.prototype.addEventListener;
     var nativeDispatchEvent = window.EventTarget && window.EventTarget.prototype.dispatchEvent;
     var nativePreventDefault = window.Event && window.Event.prototype.preventDefault;
@@ -347,7 +348,8 @@
 
         return originalFetch(parsed.href, init).then(function (response) {
             if (!response.ok || typeof Response === "undefined") return fallbackCombinedSearch(query, init);
-            return response.clone().json().then(function (tracks) {
+            return response.clone().json().then(function (payload) {
+                var tracks = payload && payload.data ? payload.data : payload;
                 var empty = { items: [], limit: 0, offset: 0, totalNumberOfItems: 0 };
                 var headers = new Headers(response.headers);
                 headers.set("content-type", "application/json; charset=utf-8");
@@ -474,8 +476,9 @@
 
     window.fetch = function (input, init) {
         if (isPreviewOnlyHiFiStream(input)) {
+            if (isCdnRunner) return originalFetch(input, init);
             return fullSongResponse(input, init).catch(function (error) {
-                throw new Error("The full-song fallback could not resolve this track: " + error.message);
+                return originalFetch(input, init);
             });
         }
         var replacement = localAssetUrl(input);
