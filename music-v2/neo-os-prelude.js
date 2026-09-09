@@ -177,6 +177,33 @@
     var fullSongProvider = "https://vcsa.huangqirui.xyz";
     var fullSongLookups = new Map();
 
+    function isMonochromeApiRequest(input) {
+        var value = typeof input === "string" ? input : input && input.url;
+        try { return new URL(value, launchUrl.href).hostname === "lol.samidy.workers.dev"; } catch (error) { return false; }
+    }
+
+    function resilientMusicFetch(input, init, attempt) {
+        var retry = Number(attempt) || 0;
+        return originalFetch(input, init).then(function (response) {
+            if ([502, 503, 520, 521, 522, 523, 524].indexOf(response.status) === -1 || retry >= 2) return response;
+            var signal = init && init.signal || (typeof Request !== "undefined" && input instanceof Request ? input.signal : null);
+            if (signal && signal.aborted) throw new DOMException("Aborted", "AbortError");
+            return new Promise(function (resolve, reject) {
+                function finish() {
+                    if (signal) signal.removeEventListener("abort", abort);
+                    resolve();
+                }
+                function abort() {
+                    window.clearTimeout(timer);
+                    if (signal) signal.removeEventListener("abort", abort);
+                    reject(new DOMException("Aborted", "AbortError"));
+                }
+                var timer = window.setTimeout(finish, retry ? 700 : 250);
+                if (signal) signal.addEventListener("abort", abort, { once: true });
+            }).then(function () { return resilientMusicFetch(input, init, retry + 1); });
+        });
+    }
+
     function normalizedWords(value) {
         return String(value || "")
             .normalize("NFKD")
@@ -346,7 +373,7 @@
         parsed.searchParams.delete("q");
         parsed.searchParams.set("s", query);
 
-        return originalFetch(parsed.href, init).then(function (response) {
+        return resilientMusicFetch(parsed.href, init).then(function (response) {
             if (!response.ok || typeof Response === "undefined") return fallbackCombinedSearch(query, init);
             return response.clone().json().then(function (payload) {
                 var tracks = payload && payload.data ? payload.data : payload;
@@ -476,7 +503,7 @@
 
     window.fetch = function (input, init) {
         if (isPreviewOnlyHiFiStream(input)) {
-            if (isCdnRunner || document.querySelector('meta[name="neo-runner"]')) return originalFetch(input, init);
+            if (isCdnRunner || document.querySelector('meta[name="neo-runner"]')) return resilientMusicFetch(input, init);
             return fullSongResponse(input, init).catch(function (error) {
                 return originalFetch(input, init);
             });
@@ -491,7 +518,7 @@
                     return Promise.reject(new Error("NEO Music uses its playback-compatible search provider."));
                 }
             } catch (error) {}
-            return originalFetch(input, init);
+            return isMonochromeApiRequest(input) ? resilientMusicFetch(input, init) : originalFetch(input, init);
         }
         if (typeof Request !== "undefined" && input instanceof Request) {
             return originalFetch(new Request(replacement, input), init);
