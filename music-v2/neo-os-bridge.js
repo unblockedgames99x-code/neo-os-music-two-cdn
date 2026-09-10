@@ -92,6 +92,8 @@
 
   function currentCover() {
     var selectors = [
+      "#npmCover",
+      "#npThumb",
       ".now-playing-bar .track-info img.cover",
       ".now-playing-bar img[alt*='Current Track Cover']",
       "#fullscreen-cover-image",
@@ -107,8 +109,8 @@
   }
 
   function metadata() {
-    var title = textWithout(".now-playing-bar .title", ".quality-badge, [class*='quality-badge']");
-    var artist = text(".now-playing-bar .artist");
+    var title = text("#npmTrackTitle") || text("#npTitle") || textWithout(".now-playing-bar .title", ".quality-badge, [class*='quality-badge']");
+    var artist = text("#npmTrackArtist") || text(".now-playing-bar .artist");
     var album = text(".now-playing-bar .album");
     var subtitle = artist || album || "";
     var coverKey = [title.toLowerCase(), subtitle.toLowerCase()].join("\n");
@@ -134,7 +136,10 @@
 
   function volumeValue(media) {
     var stored = NaN;
-    try { stored = Number(localStorage.getItem("volume")); } catch (error) {}
+    try {
+      stored = Number(localStorage.getItem("music-volume"));
+      if (!Number.isFinite(stored)) stored = Number(localStorage.getItem("volume"));
+    } catch (error) {}
     if (Number.isFinite(stored)) return clamp(stored, 0, 1);
     return media ? clamp(media.volume, 0, 1) : 1;
   }
@@ -142,9 +147,11 @@
   function restoreMediaPreferences(media) {
     if (!media) return;
     try {
-      var savedVolume = Number(localStorage.getItem("volume"));
+      var savedVolume = Number(localStorage.getItem("music-volume"));
+      if (!Number.isFinite(savedVolume)) savedVolume = Number(localStorage.getItem("volume"));
       if (Number.isFinite(savedVolume)) media.volume = clamp(savedVolume, 0, 1);
-      var savedMuted = localStorage.getItem("muted");
+      var savedMuted = localStorage.getItem("music-muted");
+      if (savedMuted !== "true" && savedMuted !== "false") savedMuted = localStorage.getItem("muted");
       if (savedMuted === "true" || savedMuted === "false") media.muted = savedMuted === "true";
     } catch (error) {}
   }
@@ -152,6 +159,8 @@
   function saveMediaPreferences(media) {
     if (!media) return;
     try {
+      localStorage.setItem("music-volume", String(clamp(media.volume, 0, 1)));
+      localStorage.setItem("music-muted", String(Boolean(media.muted)));
       localStorage.setItem("volume", String(clamp(media.volume, 0, 1)));
       localStorage.setItem("muted", String(Boolean(media.muted)));
     } catch (error) {}
@@ -278,7 +287,26 @@
     var signature = JSON.stringify(state);
     if (!force && signature === lastSignature) return;
     lastSignature = signature;
+    updateMediaSession(state);
     try { window.parent.postMessage({ neoMusicState: state }, parentTargetOrigin()); } catch (error) {}
+  }
+
+  function updateMediaSession(state) {
+    if (!("mediaSession" in navigator)) return;
+    try {
+      if (state.active && typeof MediaMetadata === "function") {
+        var artwork = state.cover ? [{ src: state.cover }] : [];
+        navigator.mediaSession.metadata = new MediaMetadata({
+          title: state.title || "Music",
+          artist: state.subtitle || "",
+          artwork: artwork
+        });
+      }
+      navigator.mediaSession.playbackState = state.playing ? "playing" : state.active ? "paused" : "none";
+      if (state.duration > 0 && state.position >= 0 && state.position <= state.duration) {
+        navigator.mediaSession.setPositionState({ duration: state.duration, position: state.position, playbackRate: 1 });
+      }
+    } catch (error) {}
   }
 
   function postLevels() {
@@ -309,6 +337,12 @@
 
   function setVolume(value) {
     value = clamp(value, 0, 1);
+    var controller = window.__NEO_METING_PLAYER__;
+    if (controller && typeof controller.setVolume === "function") {
+      controller.setVolume(value);
+      window.setTimeout(function () { postState(true); }, 40);
+      return;
+    }
     var bar = document.getElementById("volume-bar");
     if (bar) {
       var rect = bar.getBoundingClientRect();
@@ -324,6 +358,12 @@
   }
 
   function setMuted(muted) {
+    var controller = window.__NEO_METING_PLAYER__;
+    if (controller && typeof controller.setMuted === "function") {
+      controller.setMuted(muted);
+      postState(true);
+      return;
+    }
     var current = mediaElements().some(function (item) { return item.muted; });
     if (current !== muted) click("#volume-btn");
     mediaElements().forEach(function (item) { item.muted = muted; });
@@ -333,6 +373,8 @@
 
   function stopPlayback() {
     stopped = true;
+    var controller = window.__NEO_METING_PLAYER__;
+    if (controller && typeof controller.stop === "function") controller.stop();
     mediaElements().forEach(function (media) {
       try { media.pause(); } catch (error) {}
       try { media.currentTime = 0; } catch (error) {}
@@ -344,15 +386,21 @@
   function handleControl(control) {
     var action = String(control && control.action || "");
     var media = activeMedia();
+    var controller = window.__NEO_METING_PLAYER__;
     if (action === "getstate") postState(true);
     else if (action === "play") {
       stopped = false;
-      if (media && media.paused) media.play().catch(function () { click(".now-playing-bar .play-pause-btn"); });
-      else if (!media) click(".now-playing-bar .play-pause-btn");
+      if (controller && typeof controller.play === "function") controller.play().catch(function () {});
+      else if (media && media.paused) media.play().catch(function () { click("#npmPlayBtn, #npPlayBtn, .now-playing-bar .play-pause-btn"); });
+      else if (!media) click("#npmPlayBtn, #npPlayBtn, .now-playing-bar .play-pause-btn");
     } else if (action === "pause") {
-      if (media && !media.paused) media.pause();
+      if (controller && typeof controller.pause === "function") controller.pause();
+      else if (media && !media.paused) media.pause();
     } else if (action === "toggle") {
-      if (media) {
+      if (controller && typeof controller.toggle === "function") {
+        stopped = false;
+        controller.toggle().catch(function () {});
+      } else if (media) {
         if (media.paused || media.ended) {
           stopped = false;
           media.play().catch(function () { click(".now-playing-bar .play-pause-btn"); });
@@ -360,13 +408,20 @@
           media.pause();
         }
       } else {
-        click(".now-playing-bar .play-pause-btn");
+        click("#npmPlayBtn, #npPlayBtn, .now-playing-bar .play-pause-btn");
       }
     }
-    else if (action === "next") click("#next-btn");
-    else if (action === "previous") click("#prev-btn");
+    else if (action === "next") {
+      if (controller && typeof controller.next === "function") controller.next();
+      else click("#npmNextBtn, #next-btn");
+    }
+    else if (action === "previous") {
+      if (controller && typeof controller.previous === "function") controller.previous();
+      else click("#npmPrevBtn, #prev-btn");
+    }
     else if (action === "volume") setVolume(control.value);
     else if (action === "mute") setMuted(Boolean(control.value));
+    else if (action === "seek" && controller && typeof controller.seek === "function") controller.seek(control.value);
     else if (action === "seek" && media && Number.isFinite(media.duration)) media.currentTime = clamp(control.value, 0, media.duration);
     else if (action === "stop") stopPlayback();
     window.setTimeout(function () { postState(true); }, 60);
@@ -395,6 +450,19 @@
     if (event.data && event.data.neoMusicControl) handleControl(event.data.neoMusicControl);
   });
 
+  window.addEventListener("neo-meting-statechange", function () {
+    bindAll();
+    postState(true);
+  });
+
+  if ("mediaSession" in navigator) {
+    try { navigator.mediaSession.setActionHandler("play", function () { handleControl({ action: "play" }); }); } catch (error) {}
+    try { navigator.mediaSession.setActionHandler("pause", function () { handleControl({ action: "pause" }); }); } catch (error) {}
+    try { navigator.mediaSession.setActionHandler("previoustrack", function () { handleControl({ action: "previous" }); }); } catch (error) {}
+    try { navigator.mediaSession.setActionHandler("nexttrack", function () { handleControl({ action: "next" }); }); } catch (error) {}
+    try { navigator.mediaSession.setActionHandler("seekto", function (details) { if (details && Number.isFinite(details.seekTime)) handleControl({ action: "seek", value: details.seekTime }); }); } catch (error) {}
+  }
+
   var observer = new MutationObserver(function () {
     bindAll();
     postState(false);
@@ -420,5 +488,7 @@
     observer.disconnect();
     discardAnalyser();
   });
+  document.documentElement.dataset.neoMusicReady = "true";
+  try { window.parent.postMessage({ neoMusicUiReady: true }, parentTargetOrigin()); } catch (error) {}
   postState(true);
 })();

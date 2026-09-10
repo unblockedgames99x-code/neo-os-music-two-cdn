@@ -1,0 +1,97 @@
+html[data-neo-app="music"][data-neo-theme] {
+  color-scheme: dark;
+  --meting-bg: var(--desktop-bg, #000);
+  --meting-surface: var(--desktop-surface, #0e1116);
+  --meting-raised: var(--neo-theme-raised, #141820);
+  --meting-control: var(--neo-theme-control, #151a21);
+  --meting-hover: var(--neo-theme-control-hover, #202630);
+  --meting-text: var(--desktop-text, #f8fafc);
+  --meting-muted: var(--desktop-muted, #94a3b8);
+  --meting-line: var(--desktop-line, #252a31);
+  --meting-accent: var(--desktop-accent, #60a5fa);
+  --meting-accent-text: var(--desktop-accent-text, #071018);
+}
+
+html[data-neo-app="music"][data-neo-theme="frost"] { color-scheme: light; }
+
+html[data-neo-app="music"][data-neo-theme] body,
+html[data-neo-app="music"][data-neo-theme] .main-panel,
+html[data-neo-app="music"][data-neo-theme] .content-area,
+html[data-neo-app="music"][data-neo-theme] .np-view {
+  color: var(--meting-text) !important;
+  background: var(--meting-bg) !important;
+}
+
+html[data-neo-app="music"][data-neo-theme] .sidebar,
+html[data-neo-app="music"][data-neo-theme] .top-bar,
+html[data-neo-app="music"][data-neo-theme] .queue-panel {
+  color: var(--meting-text) !important;
+  background: color-mix(in srgb, var(--meting-surface) 94%, transparent) !important;
+  border-color: var(--meting-line) !important;
+}
+
+html[data-neo-app="music"][data-neo-theme] :is(.search-wpr,.np-inline,.np-extra-controls,.queue-item) {
+  color: var(--meting-text) !important;
+  background: var(--meting-control) !important;
+  border-color: var(--meting-line) !important;
+}
+
+html[data-neo-app="music"][data-neo-theme] :is(.sb-item,.sb-fav-header,.sb-fav-item,.music-card,.queue-item,.np-tool-btn,.np-skip-btn,.np-fav-btn,.np-back-btn):hover {
+  color: var(--meting-text) !important;
+  background: var(--meting-hover) !important;
+}
+
+html[data-neo-app="music"][data-neo-theme] :is(.search-input,.np-title,.np-track-title,.card-title,.queue-title,.section-title) {
+  color: var(--meting-text) !important;
+}
+
+html[data-neo-app="music"][data-neo-theme] :is(.search-icon,.search-input::placeholder,.np-track-artist,.np-time,.queue-artist,.queue-num,.sb-item,.sb-fav-header) {
+  color: var(--meting-muted) !important;
+}
+
+html[data-neo-app="music"][data-neo-theme] :is(.sb-item.active,.music-card.playing .card-title,.queue-item.playing,.np-tool-btn.active,.card-fav-btn.faved,.np-fav-btn.faved) {
+  color: var(--meting-accent) !important;
+}
+
+html[data-neo-app="music"][data-neo-theme] :is(.np-play-btn,.np-mplay-btn,.card-play) {
+  color: var(--meting-accent-text) !important;
+  background: var(--meting-accent) !important;
+}
+
+html[data-neo-app="music"][data-neo-theme] :is(.np-progress-fill,.np-mprogress-fill) {
+  background: var(--meting-accent) !important;
+}
+
+html[data-neo-app="music"][data-neo-theme] .np-mprogress-handle {
+  background: var(--meting-accent) !important;
+  border-color: var(--meting-text) !important;
+}
+
+html[data-neo-app="music"][data-neo-theme] .volume-slider::-webkit-slider-runnable-track {
+  background: linear-gradient(90deg, var(--meting-accent) 0 var(--volume-pct, 80%), var(--meting-line) var(--volume-pct, 80%)) !important;
+}
+
+html[data-neo-app="music"][data-neo-theme] .volume-slider::-webkit-slider-thumb {
+  background: var(--meting-accent) !important;
+  border-color: var(--meting-text) !important;
+}
+
+html[data-neo-app="music"][data-neo-theme] {
+  scrollbar-color: color-mix(in srgb, var(--meting-muted) 55%, transparent) var(--meting-bg);
+}
+
+html[data-neo-app="music"][data-neo-theme] *::-webkit-scrollbar-track { background: var(--meting-bg); }
+html[data-neo-app="music"][data-neo-theme] *::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--meting-muted) 52%, transparent);
+  border-color: var(--meting-bg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-neo-app="music"] *,
+  html[data-neo-app="music"] *::before,
+  html[data-neo-app="music"] *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}
