@@ -254,7 +254,7 @@
         }
         var average = total / Math.max(1, end - start);
         var energy = ((average * 0.58) + (peak * 0.42)) / 255;
-        values.push(clamp(Math.pow(Math.max(0, energy - 0.025), 0.62) * 1.22, 0, 1));
+        values.push(clamp(Math.pow(Math.max(0, energy - 0.018), 0.88) * 0.92, 0, 0.94));
       }
       var loudest = Math.max.apply(Math, values);
       analysisSilenceFrames = loudest < 0.012 ? analysisSilenceFrames + 1 : 0;
