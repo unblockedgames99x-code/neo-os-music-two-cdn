@@ -1,5 +1,5 @@
 function syncNeoNavigation() {
-    const path = window.location.pathname;
+    const path = window.__NEO_MUSIC_PATHNAME__;
     document.querySelectorAll('[data-neo-route]').forEach((link) => {
         const route = link.getAttribute('data-neo-route');
         const active = route === '/' ? path === '/' : path.startsWith(route);

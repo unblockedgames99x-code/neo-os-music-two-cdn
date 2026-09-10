@@ -118,6 +118,7 @@
     var nativeStopPropagation = window.Event && window.Event.prototype.stopPropagation;
     var nativeClosest = window.Element && window.Element.prototype.closest;
     var nativePushState = window.History && window.History.prototype.pushState;
+    var nativeReplaceState = window.History && window.History.prototype.replaceState;
     var nativeXhrOpen = window.XMLHttpRequest && window.XMLHttpRequest.prototype.open;
     var NativePopStateEvent = window.PopStateEvent;
     var historyTarget = window.history;
@@ -125,6 +126,74 @@
     var appBaseUrl = new URL("./", document.currentScript.src);
     var appPath = appBaseUrl.pathname.replace(/\/$/, "");
     var baseElement = document.querySelector("base");
+    var physicalLaunchPath = window.location.pathname + window.location.search;
+    var virtualRouteMode = /\/__neo_app__\/?$/.test(window.location.pathname);
+    var virtualPathname = "/";
+    var virtualSearch = "";
+    var virtualHash = "";
+
+    function defineRouteAlias(name, getter) {
+        try {
+            nativeDefineProperty(window, name, { configurable: true, get: getter });
+        } catch (error) {}
+    }
+
+    function syncVirtualRoute(state) {
+        if (!state || typeof state !== "object") return;
+        if (typeof state.neoMusicPath === "string") virtualPathname = state.neoMusicPath || "/";
+        if (typeof state.neoMusicSearch === "string") virtualSearch = state.neoMusicSearch;
+        if (typeof state.neoMusicHash === "string") virtualHash = state.neoMusicHash;
+    }
+
+    defineRouteAlias("__NEO_MUSIC_PATHNAME__", function () {
+        return virtualRouteMode ? virtualPathname : window.location.pathname;
+    });
+    defineRouteAlias("__NEO_MUSIC_SEARCH__", function () {
+        return virtualRouteMode ? virtualSearch : window.location.search;
+    });
+    defineRouteAlias("__NEO_MUSIC_HASH__", function () {
+        return virtualRouteMode ? virtualHash : window.location.hash;
+    });
+
+    if (virtualRouteMode && nativePushState && nativeReplaceState) {
+        function virtualHistoryCall(method, state, title, url) {
+            if (url === undefined || url === null) return method.call(historyTarget, state, title);
+            var destination;
+            try {
+                destination = new URL(String(url), window.location.origin + virtualPathname + virtualSearch + virtualHash);
+            } catch (error) {
+                return method.call(historyTarget, state, title, physicalLaunchPath);
+            }
+            if (destination.origin !== window.location.origin) return method.call(historyTarget, state, title, url);
+            virtualPathname = destination.pathname || "/";
+            virtualSearch = destination.search || "";
+            virtualHash = destination.hash || "";
+            var nextState = {};
+            if (state && typeof state === "object") {
+                Object.keys(state).forEach(function (key) { nextState[key] = state[key]; });
+            } else if (state !== undefined) {
+                nextState.neoMusicOriginalState = state;
+            }
+            nextState.neoMusicPath = virtualPathname;
+            nextState.neoMusicSearch = virtualSearch;
+            nextState.neoMusicHash = virtualHash;
+            return method.call(historyTarget, nextState, title, physicalLaunchPath);
+        }
+
+        window.History.prototype.pushState = function (state, title, url) {
+            return virtualHistoryCall(nativePushState, state, title, url);
+        };
+        window.History.prototype.replaceState = function (state, title, url) {
+            return virtualHistoryCall(nativeReplaceState, state, title, url);
+        };
+        syncVirtualRoute(window.history.state);
+        window.history.replaceState(window.history.state || { neoMusic: true }, "", virtualPathname);
+        if (nativeAddEventListener) {
+            nativeAddEventListener.call(window, "popstate", function (event) {
+                syncVirtualRoute(event.state);
+            }, true);
+        }
+    }
 
     if (baseElement) baseElement.href = appBaseUrl.href;
     window.__NEO_MUSIC_BASE__ = appPath;
@@ -162,8 +231,7 @@
 
             if (nativePreventDefault) nativePreventDefault.call(event);
             if (nativeStopPropagation) nativeStopPropagation.call(event);
-            nativePushState.call(
-                historyTarget,
+            historyTarget.pushState(
                 { neoMusic: true },
                 "",
                 destination.pathname + destination.search + destination.hash

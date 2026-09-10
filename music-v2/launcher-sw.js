@@ -8,8 +8,9 @@ function prepareAppDocument(source) {
   let html = String(source || "")
     .replace(/<meta\b[^>]*http-equiv=["']Content-Security-Policy["'][^>]*>/gi, "");
   const base = `<base href="${baseUrl.replace(/&/g, "&amp;").replace(/"/g, "&quot;")}" target="_self">`;
-  if (/<base\b[^>]*>/i.test(html)) html = html.replace(/<base\b[^>]*>/i, base);
-  else if (/<head(?:\s[^>]*)?>/i.test(html)) html = html.replace(/<head(?:\s[^>]*)?>/i, (head) => head + base);
+  const runner = '<meta name="neo-runner" content="github-jsdelivr">';
+  if (/<base\b[^>]*>/i.test(html)) html = html.replace(/<base\b[^>]*>/i, base + runner);
+  else if (/<head(?:\s[^>]*)?>/i.test(html)) html = html.replace(/<head(?:\s[^>]*)?>/i, (head) => head + base + runner);
   return html;
 }
 
