@@ -170,6 +170,15 @@
     var media = activeMedia();
     var info = metadata();
     var active = hasTrack(info, media);
+    var controller = window.__NEO_METING_PLAYER__;
+    var repeatMode = media && media.loop ? "one" : "off";
+    try {
+      if (controller && typeof controller.repeatMode === "function") repeatMode = controller.repeatMode();
+      else {
+        var storedRepeatMode = localStorage.getItem("music-repeat-mode");
+        if (/^(?:off|all|one)$/.test(storedRepeatMode || "")) repeatMode = storedRepeatMode;
+      }
+    } catch (error) {}
     return {
       active: active,
       playing: active && media ? !media.paused && !media.ended : false,
@@ -180,7 +189,8 @@
       position: media ? Math.max(0, Number(media.currentTime) || 0) : 0,
       duration: media && Number.isFinite(media.duration) ? Math.max(0, media.duration) : 0,
       volume: volumeValue(media),
-      muted: mediaElements().some(function (item) { return item.muted; })
+      muted: mediaElements().some(function (item) { return item.muted; }),
+      repeatMode: repeatMode
     };
   }
 
@@ -418,6 +428,11 @@
     else if (action === "previous") {
       if (controller && typeof controller.previous === "function") controller.previous();
       else click("#npmPrevBtn, #prev-btn");
+    }
+    else if (action === "repeat") {
+      if (controller && typeof controller.setRepeatMode === "function" && /^(?:off|all|one)$/.test(String(control.value || ""))) controller.setRepeatMode(String(control.value));
+      else if (controller && typeof controller.cycleRepeatMode === "function") controller.cycleRepeatMode();
+      else click("#autoplayBtn, #repeat-btn");
     }
     else if (action === "volume") setVolume(control.value);
     else if (action === "mute") setMuted(Boolean(control.value));

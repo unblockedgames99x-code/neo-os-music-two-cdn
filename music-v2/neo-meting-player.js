@@ -37,7 +37,11 @@
   var playQueue = [];
   var queueIndex = -1;
   var audioExtrasReady = false;
-  var autoplayEnabled = localStorage.getItem("music-autoplay") !== "false";
+  var storedRepeatMode = localStorage.getItem("music-repeat-mode");
+  var legacyAutoplay = localStorage.getItem("music-autoplay");
+  var repeatMode = /^(?:off|all|one)$/.test(storedRepeatMode || "")
+    ? storedRepeatMode
+    : legacyAutoplay === "true" ? "all" : "off";
   var savedVolume = Number(localStorage.getItem("music-volume"));
   if (!Number.isFinite(savedVolume)) savedVolume = Number(localStorage.getItem("volume"));
   savedVolume = Math.max(0, Math.min(1, Number.isFinite(savedVolume) ? savedVolume : 0.8));
@@ -45,6 +49,32 @@
 
   function emitState() {
     window.dispatchEvent(new CustomEvent("neo-meting-statechange"));
+  }
+
+  function syncRepeatMode() {
+    if (audioEl) audioEl.loop = repeatMode === "one";
+    var button = document.getElementById("autoplayBtn");
+    if (button) {
+      var active = repeatMode !== "off";
+      var label = repeatMode === "one" ? "Repeat one" : repeatMode === "all" ? "Repeat all" : "Repeat off";
+      button.classList.toggle("active", active);
+      button.dataset.repeatMode = repeatMode;
+      button.setAttribute("aria-label", label);
+      button.setAttribute("aria-pressed", String(active));
+      button.title = label;
+    }
+    localStorage.setItem("music-repeat-mode", repeatMode);
+    localStorage.setItem("music-autoplay", String(repeatMode !== "off"));
+  }
+
+  function setRepeatMode(value) {
+    repeatMode = /^(?:off|all|one)$/.test(String(value || "")) ? String(value) : "off";
+    syncRepeatMode();
+    emitState();
+  }
+
+  function cycleRepeatMode() {
+    setRepeatMode(repeatMode === "off" ? "all" : repeatMode === "all" ? "one" : "off");
   }
 
   var originalRenderCard = renderCard;
@@ -73,12 +103,20 @@
     audioEl.crossOrigin = "anonymous";
     audioEl.volume = savedVolume;
     audioEl.muted = savedMuted;
+    audioEl.loop = repeatMode === "one";
     if (audioExtrasReady) return;
     audioExtrasReady = true;
     ["play", "playing", "pause", "ended", "timeupdate", "durationchange", "volumechange", "error"].forEach(function (name) {
       audioEl.addEventListener(name, emitState);
     });
-    audioEl.addEventListener("ended", function () { if (autoplayEnabled) playNext(); });
+    audioEl.addEventListener("ended", function () {
+      if (repeatMode === "one") {
+        audioEl.currentTime = 0;
+        audioEl.play().catch(function () {});
+      } else if (repeatMode === "all") {
+        playNext();
+      }
+    });
   }
 
   function playNext() {
@@ -165,13 +203,8 @@
 
   var autoplayButton = document.getElementById("autoplayBtn");
   if (autoplayButton) {
-    autoplayButton.classList.toggle("active", autoplayEnabled);
-    autoplayButton.addEventListener("click", function () {
-      autoplayEnabled = !autoplayEnabled;
-      autoplayButton.classList.toggle("active", autoplayEnabled);
-      localStorage.setItem("music-autoplay", String(autoplayEnabled));
-      emitState();
-    });
+    syncRepeatMode();
+    autoplayButton.addEventListener("click", cycleRepeatMode);
   }
 
   var queuePanel = document.getElementById("queuePanel");
@@ -200,6 +233,9 @@
     },
     seek: function (value) { if (audioEl) audioEl.currentTime = Math.max(0, Number(value) || 0); },
     setVolume: setVolume,
+    repeatMode: function () { return repeatMode; },
+    setRepeatMode: setRepeatMode,
+    cycleRepeatMode: cycleRepeatMode,
     setMuted: function (value) {
       setupAudioExtras();
       savedMuted = value === true;
