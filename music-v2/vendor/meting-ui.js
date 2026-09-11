@@ -1,6 +1,6 @@
 lucide.createIcons();
 
-const API_BASE='';
+const API_BASE=String(window.__NEO_MUSIC_SERVER_ORIGIN__||'').replace(/\/+$/,'');
 const FALLBACK_COVER='./assets/cover-fallback.svg';
 const FALLBACK_COVER_URL=new URL(FALLBACK_COVER,document.baseURI).href;
 const cardGrid=document.getElementById('cardGrid');
@@ -135,7 +135,7 @@ function searchVinyl(query) {
         return;
     }
     cardGrid.className='card-grid';
-    showCatalogStatus('Searching music…','Connecting directly to the DrFrost music server.');
+    showCatalogStatus('Searching music…','Connecting to the music service.');
     const url=`${API_BASE}/api/music/ytm/search?q=${encodeURIComponent(query)}&limit=20`;
     const es=new EventSource(url);
     currentEventSource=es;
@@ -158,7 +158,7 @@ function searchVinyl(query) {
     es.onerror=()=>{
         es.close();
         currentEventSource=null;
-        if (!hasCatalogResults()) showCatalogStatus('Music server unavailable','DrFrost did not answer. Check your connection, then try again.',()=>searchVinyl(query));
+        if (!hasCatalogResults()) showCatalogStatus('Music server unavailable','The music service did not answer. Check your connection, then try again.',()=>searchVinyl(query));
     };
 }
 
@@ -185,7 +185,7 @@ function fetchHome() {
         currentEventSource=null;
     }
     cardGrid.className='home-sections';
-    showCatalogStatus('Loading music…','Connecting directly to the DrFrost music server.');
+    showCatalogStatus('Loading music…','Connecting to the music service.');
     const url=`${API_BASE}/api/music/ytm/home?limit=10`;
     const es=new EventSource(url);
     currentEventSource=es;
@@ -208,7 +208,7 @@ function fetchHome() {
     es.onerror=()=>{
         es.close();
         currentEventSource=null;
-        if (!hasCatalogResults()) showCatalogStatus('Music server unavailable','DrFrost did not answer. Check your connection, then try again.',fetchHome);
+        if (!hasCatalogResults()) showCatalogStatus('Music server unavailable','The music service did not answer. Check your connection, then try again.',fetchHome);
     };
 }
 
@@ -218,9 +218,10 @@ function playTrack(track) {
         showNPView();
         return;
     }
-    const url=`${API_BASE}/api/sp/audio/${track.id}`;
+    const url=`${API_BASE}/api/sp/audio/${encodeURIComponent(track.id)}`;
     if (!audioEl) {
         audioEl=new Audio();
+        audioEl.crossOrigin='anonymous';
         document.body.appendChild(audioEl);
         audioEl.addEventListener('timeupdate',updProgress);
         audioEl.addEventListener('play',()=>setPlayButtonState(true));
@@ -228,8 +229,6 @@ function playTrack(track) {
         audioEl.addEventListener('ended',()=>setPlayButtonState(false));
     }
     audioEl.pause();
-    audioEl.src=url;
-    audioEl.play().catch((err)=>console.error('playback failed',err));
     currentTrack=track;
     currentPlayingId=track.id;
     npTitle.textContent=track.title;
@@ -254,6 +253,18 @@ function playTrack(track) {
     document.querySelectorAll('.music-card.playing').forEach((el)=>el.classList.remove('playing'));
     const el=document.querySelector(`.music-card[data-id="${track.id}"]`);
     if (el) el.classList.add('playing');
+    const playback=window.__NEO_MUSIC_PLAYBACK__;
+    if (playback&&typeof playback.play==='function') {
+        playback.play(audioEl,track).catch((err)=>{
+            if (err?.name==='AbortError') return;
+            console.error('playback failed',err);
+            npmTrackArtist.textContent='Playback unavailable — choose another track';
+            setPlayButtonState(false);
+        });
+    } else {
+        audioEl.src=url;
+        audioEl.play().catch((err)=>console.error('playback failed',err));
+    }
 }
 
 function updProgress() {
