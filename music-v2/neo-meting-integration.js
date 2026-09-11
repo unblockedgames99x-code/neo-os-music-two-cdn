@@ -46,16 +46,50 @@
       "/stream?app_name=" + encodeURIComponent(AUDIUS_APP_NAME);
   }
 
-  function savedAudiusStream(trackId) {
+  function uniqueStrings(values) {
+    return values.filter(function (value, index) {
+      return value && values.indexOf(value) === index;
+    });
+  }
+
+  function audiusStreamCandidates(track) {
+    var stable = audiusStreamUrl(String(track.id));
+    var direct = String(track.stream && track.stream.url || "");
+    if (!direct) return [stable];
+    var parsed = parseUrl(direct);
+    if (!parsed) return [stable];
+    var origins = [parsed.origin].concat(Array.isArray(track.stream.mirrors) ? track.stream.mirrors : []);
+    var candidates = origins.map(function (origin) {
+      try { return new URL(parsed.pathname + parsed.search, String(origin)).href; } catch (error) { return ""; }
+    });
+    candidates.push(stable);
+    return uniqueStrings(candidates).sort(function (left, right) {
+      function score(value) {
+        try {
+          var host = new URL(value).hostname;
+          if (/figment\.io$/i.test(host)) return 0;
+          if (/audius\.co$/i.test(host)) return 1;
+        } catch (error) {}
+        return 2;
+      }
+      return score(left) - score(right);
+    });
+  }
+
+  function savedAudiusStreams(trackId) {
     if (audiusStreams.has(trackId)) return audiusStreams.get(trackId);
     try {
       var favorites = JSON.parse(localStorage.getItem("favourites") || "[]");
       var saved = Array.isArray(favorites) && favorites.find(function (track) {
         return String(track && track.id || "") === trackId && track.streamUrl;
       });
-      if (saved) return String(saved.streamUrl);
+      if (saved) {
+        var candidates = uniqueStrings((Array.isArray(saved.streamCandidates) ? saved.streamCandidates : []).concat(String(saved.streamUrl)));
+        audiusStreams.set(trackId, candidates);
+        return candidates;
+      }
     } catch (error) {}
-    return "";
+    return [];
   }
 
   function audioUrl(value) {
@@ -63,8 +97,8 @@
     if (!url) return value;
     var match = url.pathname.match(/^\/api\/sp\/audio\/([A-Za-z0-9_-]{6,32})$/);
     if (!match) return value;
-    var direct = savedAudiusStream(match[1]);
-    return direct || API_BASE + "/audio/" + encodeURIComponent(match[1]);
+    var candidates = savedAudiusStreams(match[1]);
+    return candidates[0] || API_BASE + "/audio/" + encodeURIComponent(match[1]);
   }
 
   if (typeof nativeEventSource === "function") {
@@ -95,7 +129,8 @@
             var sourceId = String(track.id);
             var id = "au_" + sourceId;
             var streamUrl = audiusStreamUrl(sourceId);
-            audiusStreams.set(id, streamUrl);
+            var streamCandidates = audiusStreamCandidates(track);
+            audiusStreams.set(id, streamCandidates);
             var artwork = track.artwork || {};
             var artist = track.user && (track.user.name || track.user.handle) || "Unknown Artist";
             return {
@@ -105,6 +140,7 @@
               thumb: String(artwork["480x480"] || artwork["150x150"] || ""),
               duration: Number(track.duration) || 0,
               streamUrl: streamUrl,
+              streamCandidates: streamCandidates,
               provider: "audius"
             };
           });
@@ -239,7 +275,33 @@
       get: mediaSource.get,
       set: function (value) {
         var next = audioUrl(value);
-        if (next !== value && this instanceof window.HTMLAudioElement) this.crossOrigin = "anonymous";
+        if (next !== value && this instanceof window.HTMLAudioElement) {
+          this.crossOrigin = "anonymous";
+          var parsed = parseUrl(value);
+          var match = parsed && parsed.pathname.match(/^\/api\/sp\/audio\/([A-Za-z0-9_-]{6,32})$/);
+          var candidates = match ? savedAudiusStreams(match[1]) : [];
+          if (this.__neoMusicFallbackState && this.__neoMusicFallbackState.handler) {
+            this.removeEventListener("error", this.__neoMusicFallbackState.handler);
+          }
+          if (candidates.length > 1) {
+            var media = this;
+            var state = { index: 0, candidates: candidates.slice(), handler: null };
+            state.handler = function () {
+              if (state.index + 1 >= state.candidates.length) return;
+              state.index += 1;
+              mediaSource.set.call(media, state.candidates[state.index]);
+              try { media.load(); } catch (error) {}
+              try {
+                var playback = media.play();
+                if (playback && typeof playback.catch === "function") playback.catch(function () {});
+              } catch (error) {}
+            };
+            this.__neoMusicFallbackState = state;
+            this.addEventListener("error", state.handler);
+          } else {
+            this.__neoMusicFallbackState = null;
+          }
+        }
         mediaSource.set.call(this, next);
       }
     });
