@@ -1,6 +1,8 @@
 lucide.createIcons();
 
 const API_BASE='';
+const FALLBACK_COVER='./assets/cover-fallback.svg';
+const FALLBACK_COVER_URL=new URL(FALLBACK_COVER,document.baseURI).href;
 const cardGrid=document.getElementById('cardGrid');
 const searchInput=document.getElementById('searchInput');
 
@@ -40,13 +42,40 @@ function escapeHtml(str) {
     return div.innerHTML;
 }
 
+function coverUrl(value) {
+    const cover=String(value||'').trim();
+    if (!cover) return FALLBACK_COVER_URL;
+    try {
+        const parsed=new URL(cover,document.baseURI);
+        return ['http:','https:','data:','blob:'].includes(parsed.protocol)?parsed.href:FALLBACK_COVER_URL;
+    } catch (err) {
+        return FALLBACK_COVER_URL;
+    }
+}
+
+function applyCoverFallback(image,value) {
+    if (!image) return;
+    const cover=coverUrl(value);
+    image.decoding='async';
+    image.referrerPolicy=/^(?:data|blob):/.test(cover)?'':'no-referrer';
+    image.classList.toggle('is-fallback-cover',cover===FALLBACK_COVER_URL);
+    image.onerror=()=>{
+        image.onerror=null;
+        image.classList.add('is-fallback-cover');
+        image.src=FALLBACK_COVER_URL;
+    };
+    image.src=cover;
+}
+
+window.NEO_MUSIC_COVERS=Object.freeze({fallback:FALLBACK_COVER,url:coverUrl,set:applyCoverFallback});
+
 function renderCard(track) {
     const card=document.createElement('div');
     card.className='music-card';
     card.dataset.id=track.id;
     card.innerHTML=`
     <div class="card-art">
-        <img src="${track.thumb}" alt="${escapeHtml(track.title)}" loading="lazy">
+        <img src="${escapeHtml(coverUrl(track.thumb))}" alt="${escapeHtml(track.title)}" loading="lazy" decoding="async">
         <button class="card-fav-btn${isFavourite(track.id)?' faved':''}" data-id="${track.id}">
             <i data-lucide="heart"></i>
         </button>
@@ -57,6 +86,7 @@ function renderCard(track) {
     <div class="card-title" title="${escapeHtml(track.title)} - ${escapeHtml(track.artist)}">
         ${escapeHtml(track.title)}
     </div>`;
+    applyCoverFallback(card.querySelector('.card-art img'),track.thumb);
     card.querySelector('.card-play').addEventListener('click',(e)=>{
         e.stopPropagation();
         playTrack(track);
@@ -167,11 +197,11 @@ function playTrack(track) {
     currentTrack=track;
     currentPlayingId=track.id;
     npTitle.textContent=track.title;
-    npThumb.src=track.thumb;
+    applyCoverFallback(npThumb,track.thumb);
     npThumb.style.display='block';
     npmProgressFill.style.width='0%';
     npBar.classList.add('visible');
-    npmCover.src=track.thumb;
+    applyCoverFallback(npmCover,track.thumb);
     npmTrackTitle.textContent=track.title;
     npmTrackArtist.textContent=track.artist;
     npmProgressFill.style.width='0%';
@@ -356,8 +386,9 @@ function renderSBFavourites() {
         const item=document.createElement('div');
         item.className='sb-fav-item';
         item.innerHTML=`
-        <img src="${track.thumb}" alt="">
+        <img src="${escapeHtml(coverUrl(track.thumb))}" alt="" loading="lazy" decoding="async">
         <span>${escapeHtml(track.title)}</span>`;
+        applyCoverFallback(item.querySelector('img'),track.thumb);
         item.addEventListener('click',()=>playTrack(track));
         sbFavourites.appendChild(item);
     });

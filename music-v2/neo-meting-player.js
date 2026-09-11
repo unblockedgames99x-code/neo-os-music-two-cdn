@@ -143,7 +143,10 @@
     playQueue.forEach(function (track, index) {
       var row = document.createElement("div");
       row.className = "queue-item" + (index === queueIndex ? " playing" : "");
-      row.innerHTML = '<img src="' + escapeHtml(track.thumb) + '" alt="' + escapeHtml(track.title) + '"><div class="queue-meta"><div class="queue-title">' + escapeHtml(track.title) + '</div><div class="queue-artist">' + escapeHtml(track.artist) + '</div></div><span class="queue-num">' + (index + 1) + "</span>";
+      var covers = window.NEO_MUSIC_COVERS;
+      var cover = covers ? covers.url(track.thumb) : String(track.thumb || "");
+      row.innerHTML = '<img src="' + escapeHtml(cover) + '" alt="' + escapeHtml(track.title) + '" decoding="async"><div class="queue-meta"><div class="queue-title">' + escapeHtml(track.title) + '</div><div class="queue-artist">' + escapeHtml(track.artist) + '</div></div><span class="queue-num">' + (index + 1) + "</span>";
+      if (covers) covers.set(row.querySelector("img"), track.thumb);
       row.addEventListener("click", function () {
         queueIndex = index;
         playTrack(track);

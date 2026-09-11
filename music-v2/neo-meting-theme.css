@@ -59,10 +59,21 @@ html[data-neo-app="music"][data-neo-theme] .card-play {
 }
 
 html[data-neo-app="music"][data-neo-theme] :is(.np-play-btn,.np-mplay-btn) {
-  color: var(--meting-text) !important;
-  background: color-mix(in srgb, var(--meting-control) 88%, transparent) !important;
+  color: var(--meting-accent-text) !important;
+  background: var(--meting-accent) !important;
   border: 1px solid color-mix(in srgb, var(--meting-accent) 42%, var(--meting-line)) !important;
   box-shadow: 0 8px 22px color-mix(in srgb, var(--meting-bg) 72%, transparent), inset 0 1px 0 color-mix(in srgb, var(--meting-text) 9%, transparent);
+}
+
+html[data-neo-app="music"][data-neo-theme] :is(.np-play-btn,.np-mplay-btn) svg {
+  color: currentColor !important;
+  stroke: currentColor !important;
+  fill: none !important;
+}
+
+html[data-neo-app="music"][data-neo-theme] :is(.np-play-btn,.np-mplay-btn) svg.lucide-play {
+  stroke: none !important;
+  fill: currentColor !important;
 }
 
 html[data-neo-app="music"][data-neo-theme] .np-mplay-btn {
@@ -71,10 +82,19 @@ html[data-neo-app="music"][data-neo-theme] .np-mplay-btn {
 }
 
 html[data-neo-app="music"][data-neo-theme] :is(.np-play-btn,.np-mplay-btn):hover {
-  color: var(--meting-accent) !important;
-  background: var(--meting-hover) !important;
+  color: var(--meting-accent-text) !important;
+  background: color-mix(in srgb, var(--meting-accent) 82%, var(--meting-text)) !important;
   border-color: color-mix(in srgb, var(--meting-accent) 72%, var(--meting-line)) !important;
   transform: translateY(-1px);
+}
+
+html[data-neo-app="music"][data-neo-theme] :is(.card-art img,img.np-icon,.np-cover,.sb-fav-item img,.queue-item img) {
+  image-rendering: auto !important;
+}
+
+html[data-neo-app="music"][data-neo-theme] .is-fallback-cover {
+  object-fit: cover;
+  background: var(--meting-control);
 }
 
 html[data-neo-app="music"][data-neo-theme] :is(.np-play-btn,.np-mplay-btn):active {
