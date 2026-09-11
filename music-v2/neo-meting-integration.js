@@ -6,8 +6,11 @@
   window.__NEO_MUSIC__ = true;
 
   var API_BASE = "https://neo-stratus-api-w6nw.onrender.com/music/v1";
+  var AUDIUS_BASES = ["https://api.audius.co/v1", "https://discoveryprovider.audius.co/v1"];
+  var AUDIUS_APP_NAME = "NEO Music";
   var nativeEventSource = window.EventSource;
   var mediaSource = Object.getOwnPropertyDescriptor(window.HTMLMediaElement.prototype, "src");
+  var audiusStreams = new Map();
 
   function parseUrl(value) {
     try { return new URL(String(value || ""), document.baseURI); } catch (error) { return null; }
@@ -25,21 +28,206 @@
     return value;
   }
 
+  function catalogRequest(value) {
+    var url = parseUrl(value);
+    if (!url) return null;
+    var mode = url.pathname === "/api/music/ytm/search" ? "search" :
+      url.pathname === "/api/music/ytm/home" ? "home" : "";
+    if (!mode) return null;
+    return {
+      mode: mode,
+      query: String(url.searchParams.get("q") || "").trim(),
+      limit: Math.min(30, Math.max(1, Number(url.searchParams.get("limit")) || (mode === "search" ? 20 : 10)))
+    };
+  }
+
+  function audiusStreamUrl(trackId) {
+    return AUDIUS_BASES[0] + "/tracks/" + encodeURIComponent(trackId) +
+      "/stream?app_name=" + encodeURIComponent(AUDIUS_APP_NAME);
+  }
+
+  function savedAudiusStream(trackId) {
+    if (audiusStreams.has(trackId)) return audiusStreams.get(trackId);
+    try {
+      var favorites = JSON.parse(localStorage.getItem("favourites") || "[]");
+      var saved = Array.isArray(favorites) && favorites.find(function (track) {
+        return String(track && track.id || "") === trackId && track.streamUrl;
+      });
+      if (saved) return String(saved.streamUrl);
+    } catch (error) {}
+    return "";
+  }
+
   function audioUrl(value) {
     var url = parseUrl(value);
     if (!url) return value;
-    var match = url.pathname.match(/^\/api\/sp\/audio\/([A-Za-z0-9_-]{6,20})$/);
-    return match ? API_BASE + "/audio/" + encodeURIComponent(match[1]) : value;
+    var match = url.pathname.match(/^\/api\/sp\/audio\/([A-Za-z0-9_-]{6,32})$/);
+    if (!match) return value;
+    var direct = savedAudiusStream(match[1]);
+    return direct || API_BASE + "/audio/" + encodeURIComponent(match[1]);
   }
 
   if (typeof nativeEventSource === "function") {
-    function NeoMusicEventSource(value, options) {
-      return new nativeEventSource(catalogUrl(value), options);
+    function fetchAudius(request, signal, index) {
+      var providerIndex = Number(index) || 0;
+      if (providerIndex >= AUDIUS_BASES.length) return Promise.reject(new Error("Music catalog is unavailable."));
+      var controller = new AbortController();
+      var timer = setTimeout(function () { controller.abort(); }, 8000);
+      function cancelled() { controller.abort(); }
+      if (signal) signal.addEventListener("abort", cancelled, { once: true });
+      var path = request.mode === "search" ? "/tracks/search" : "/tracks/trending";
+      var endpoint = new URL(AUDIUS_BASES[providerIndex] + path);
+      if (request.mode === "search") endpoint.searchParams.set("query", request.query);
+      else endpoint.searchParams.set("time", "week");
+      endpoint.searchParams.set("limit", String(request.limit));
+      endpoint.searchParams.set("app_name", AUDIUS_APP_NAME);
+      return fetch(endpoint.href, { cache: "no-store", credentials: "omit", signal: controller.signal })
+        .then(function (response) {
+          if (!response.ok) throw new Error("Music fallback returned " + response.status + ".");
+          return response.json();
+        })
+        .then(function (payload) {
+          var tracks = Array.isArray(payload && payload.data) ? payload.data : [];
+          return tracks.filter(function (track) {
+            return track && track.id && track.title && track.is_available !== false &&
+              track.is_streamable !== false && !(track.is_stream_gated || track.stream_conditions);
+          }).map(function (track) {
+            var sourceId = String(track.id);
+            var id = "au_" + sourceId;
+            var streamUrl = audiusStreamUrl(sourceId);
+            audiusStreams.set(id, streamUrl);
+            var artwork = track.artwork || {};
+            var artist = track.user && (track.user.name || track.user.handle) || "Unknown Artist";
+            return {
+              id: id,
+              title: String(track.title),
+              artist: String(artist),
+              thumb: String(artwork["480x480"] || artwork["150x150"] || ""),
+              duration: Number(track.duration) || 0,
+              streamUrl: streamUrl,
+              provider: "audius"
+            };
+          });
+        })
+        .finally(function () {
+          clearTimeout(timer);
+          if (signal) signal.removeEventListener("abort", cancelled);
+        })
+        .catch(function (error) {
+          if (signal && signal.aborted) throw error;
+          return fetchAudius(request, signal, providerIndex + 1);
+        });
     }
-    NeoMusicEventSource.prototype = nativeEventSource.prototype;
+
+    function NeoMusicEventSource(value, options) {
+      var request = catalogRequest(value);
+      if (!request) return new nativeEventSource(value, options);
+
+      var bridge = this;
+      var listeners = { open: [], message: [], error: [] };
+      var fallbackController = new AbortController();
+      var fallbackStarted = false;
+      var primaryDelivered = false;
+      var winner = "";
+      var nativeSource = new nativeEventSource(catalogUrl(value), options);
+      var fallbackTimer = setTimeout(startFallback, 1200);
+
+      Object.defineProperties(bridge, {
+        url: { value: String(value), enumerable: true },
+        withCredentials: { value: false, enumerable: true },
+        readyState: { value: 0, writable: true, enumerable: true }
+      });
+      bridge.onopen = null;
+      bridge.onmessage = null;
+      bridge.onerror = null;
+
+      function emit(type, event) {
+        if (bridge.readyState === 2) return;
+        var handler = bridge["on" + type];
+        if (typeof handler === "function") handler.call(bridge, event);
+        listeners[type].slice().forEach(function (listener) { listener.call(bridge, event); });
+      }
+
+      function select(source) {
+        if (winner) return winner === source;
+        winner = source;
+        clearTimeout(fallbackTimer);
+        bridge.readyState = 1;
+        emit("open", { type: "open", target: bridge });
+        if (source === "primary") fallbackController.abort();
+        else nativeSource.close();
+        return true;
+      }
+
+      function finishPrimary() {
+        if (!winner) { startFallback(); return; }
+        if (winner === "primary") emit("message", { type: "message", data: "[DONE]", target: bridge });
+      }
+
+      function startFallback() {
+        if (fallbackStarted || winner === "primary" || bridge.readyState === 2) return;
+        fallbackStarted = true;
+        fetchAudius(request, fallbackController.signal, 0).then(function (tracks) {
+          if (bridge.readyState === 2 || !tracks.length || !select("fallback")) {
+            if (!tracks.length && !winner) throw new Error("No music was found.");
+            return;
+          }
+          if (request.mode === "home") {
+            emit("message", {
+              type: "message",
+              data: JSON.stringify({ section: "Trending now", tracks: tracks }),
+              target: bridge
+            });
+          } else {
+            tracks.forEach(function (track) {
+              emit("message", { type: "message", data: JSON.stringify(track), target: bridge });
+            });
+          }
+          emit("message", { type: "message", data: "[DONE]", target: bridge });
+        }).catch(function () {
+          if (!winner && bridge.readyState !== 2) {
+            bridge.readyState = 2;
+            var event = { type: "error", target: bridge };
+            var handler = bridge.onerror;
+            if (typeof handler === "function") handler.call(bridge, event);
+            listeners.error.slice().forEach(function (listener) { listener.call(bridge, event); });
+          }
+        });
+      }
+
+      nativeSource.onmessage = function (event) {
+        if (event.data === "[DONE]" && !primaryDelivered) { nativeSource.close(); startFallback(); return; }
+        if (event.data === "[DONE]") { finishPrimary(); return; }
+        primaryDelivered = true;
+        if (select("primary")) emit("message", { type: "message", data: event.data, target: bridge });
+      };
+      nativeSource.onerror = function () {
+        nativeSource.close();
+        if (winner === "primary") finishPrimary();
+        else startFallback();
+      };
+
+      bridge.addEventListener = function (type, listener) {
+        if (listeners[type] && typeof listener === "function") listeners[type].push(listener);
+      };
+      bridge.removeEventListener = function (type, listener) {
+        if (!listeners[type]) return;
+        listeners[type] = listeners[type].filter(function (item) { return item !== listener; });
+      };
+      bridge.close = function () {
+        if (bridge.readyState === 2) return;
+        bridge.readyState = 2;
+        clearTimeout(fallbackTimer);
+        nativeSource.close();
+        fallbackController.abort();
+      };
+    }
+    NeoMusicEventSource.prototype = { constructor: NeoMusicEventSource };
     Object.setPrototypeOf(NeoMusicEventSource, nativeEventSource);
-    ["CONNECTING", "OPEN", "CLOSED"].forEach(function (name) {
-      try { Object.defineProperty(NeoMusicEventSource, name, { value: nativeEventSource[name] }); } catch (error) {}
+    Object.defineProperties(NeoMusicEventSource, {
+      CONNECTING: { value: 0 },
+      OPEN: { value: 1 },
+      CLOSED: { value: 2 }
     });
     window.EventSource = NeoMusicEventSource;
   }
@@ -59,6 +247,7 @@
 
   window.__NEO_MUSIC_API__ = Object.freeze({
     base: API_BASE,
+    fallbackBases: AUDIUS_BASES.slice(),
     catalogUrl: catalogUrl,
     audioUrl: audioUrl
   });
