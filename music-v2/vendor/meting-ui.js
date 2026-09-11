@@ -69,6 +69,36 @@ function applyCoverFallback(image,value) {
 
 window.NEO_MUSIC_COVERS=Object.freeze({fallback:FALLBACK_COVER,url:coverUrl,set:applyCoverFallback});
 
+function showCatalogStatus(title,detail,retry,label='Try again') {
+    cardGrid.innerHTML='';
+    const status=document.createElement('div');
+    status.className='catalog-status';
+    const icon=document.createElement('i');
+    icon.setAttribute('data-lucide','music-2');
+    const heading=document.createElement('strong');
+    heading.textContent=title;
+    const copy=document.createElement('span');
+    copy.textContent=detail;
+    status.append(icon,heading,copy);
+    if (typeof retry==='function') {
+        const button=document.createElement('button');
+        button.type='button';
+        button.textContent=label;
+        button.addEventListener('click',retry);
+        status.appendChild(button);
+    }
+    cardGrid.appendChild(status);
+    lucide.createIcons();
+}
+
+function clearCatalogStatus() {
+    cardGrid.querySelector('.catalog-status')?.remove();
+}
+
+function hasCatalogResults() {
+    return Boolean(cardGrid.querySelector('.music-card,.home-section'));
+}
+
 function renderCard(track) {
     const card=document.createElement('div');
     card.className='music-card';
@@ -105,7 +135,7 @@ function searchVinyl(query) {
         return;
     }
     cardGrid.className='card-grid';
-    cardGrid.innerHTML='';
+    showCatalogStatus('Searching music…','Connecting directly to the DrFrost music server.');
     const url=`${API_BASE}/api/music/ytm/search?q=${encodeURIComponent(query)}&limit=20`;
     const es=new EventSource(url);
     currentEventSource=es;
@@ -113,10 +143,12 @@ function searchVinyl(query) {
         if (event.data==='[DONE]') {
             es.close();
             currentEventSource=null;
+            if (!hasCatalogResults()) showCatalogStatus('No songs found','Try a different song, artist, or album.',()=>searchVinyl(query),'Search again');
             return;
         }
         try {
             const track=JSON.parse(event.data);
+            clearCatalogStatus();
             cardGrid.appendChild(renderCard(track));
             lucide.createIcons();
         } catch (err) {
@@ -126,6 +158,7 @@ function searchVinyl(query) {
     es.onerror=()=>{
         es.close();
         currentEventSource=null;
+        if (!hasCatalogResults()) showCatalogStatus('Music server unavailable','DrFrost did not answer. Check your connection, then try again.',()=>searchVinyl(query));
     };
 }
 
@@ -151,8 +184,8 @@ function fetchHome() {
         currentEventSource.close();
         currentEventSource=null;
     }
-    cardGrid.innerHTML='';
     cardGrid.className='home-sections';
+    showCatalogStatus('Loading music…','Connecting directly to the DrFrost music server.');
     const url=`${API_BASE}/api/music/ytm/home?limit=10`;
     const es=new EventSource(url);
     currentEventSource=es;
@@ -160,10 +193,12 @@ function fetchHome() {
         if (event.data==='[DONE]') {
             es.close();
             currentEventSource=null;
+            if (!hasCatalogResults()) showCatalogStatus('Music server unavailable','DrFrost did not return any music.',fetchHome);
             return;
         }
         try {
             const {section,tracks}=JSON.parse(event.data);
+            clearCatalogStatus();
             cardGrid.appendChild(renderSection(section,tracks));
             lucide.createIcons();
         } catch (err) {
@@ -173,6 +208,7 @@ function fetchHome() {
     es.onerror=()=>{
         es.close();
         currentEventSource=null;
+        if (!hasCatalogResults()) showCatalogStatus('Music server unavailable','DrFrost did not answer. Check your connection, then try again.',fetchHome);
     };
 }
 

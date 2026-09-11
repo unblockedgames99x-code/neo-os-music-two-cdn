@@ -129,6 +129,58 @@ html[data-neo-app="music"][data-neo-theme] *::-webkit-scrollbar-thumb {
   border-color: var(--meting-bg);
 }
 
+html[data-neo-app="music"][data-neo-theme] .catalog-status {
+  grid-column: 1 / -1;
+  width: min(430px, calc(100% - 32px));
+  min-height: 220px;
+  margin: clamp(42px, 10vh, 110px) auto 0;
+  padding: 34px 28px;
+  border: 1px solid var(--meting-line);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--meting-panel) 92%, transparent);
+  color: var(--meting-muted);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  text-align: center;
+}
+
+html[data-neo-app="music"][data-neo-theme] .catalog-status svg {
+  width: 28px;
+  height: 28px;
+  margin-bottom: 5px;
+  color: var(--meting-accent);
+}
+
+html[data-neo-app="music"][data-neo-theme] .catalog-status strong {
+  color: var(--meting-text);
+  font-size: 16px;
+}
+
+html[data-neo-app="music"][data-neo-theme] .catalog-status span {
+  max-width: 330px;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+html[data-neo-app="music"][data-neo-theme] .catalog-status button {
+  margin-top: 9px;
+  padding: 9px 15px;
+  border: 1px solid color-mix(in srgb, var(--meting-accent) 46%, var(--meting-line));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--meting-accent) 16%, var(--meting-control));
+  color: var(--meting-text);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+html[data-neo-app="music"][data-neo-theme] .catalog-status button:hover {
+  background: color-mix(in srgb, var(--meting-accent) 25%, var(--meting-control));
+}
+
 @media (prefers-reduced-motion: reduce) {
   html[data-neo-app="music"] *,
   html[data-neo-app="music"] *::before,
