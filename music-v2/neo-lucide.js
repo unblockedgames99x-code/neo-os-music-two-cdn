@@ -4,7 +4,7 @@
     "home": '<path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/><path d="M9 22V12h6v10"/>',
     "library": '<path d="m16 6 4 14"/><path d="M12 6v14"/><path d="M8 8v12"/><path d="M4 4v16"/>',
     "chevron-down": '<path d="m6 9 6 6 6-6"/>',
-    "play": '<path d="m6 3 14 9-14 9Z"/>',
+    "play": '<path d="M8.25 5.85v12.3L18.5 12Z" fill="currentColor" stroke="none"/>',
     "pause": '<path d="M8 5v14"/><path d="M16 5v14"/>',
     "search": '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
     "arrow-left": '<path d="m12 19-7-7 7-7"/><path d="M19 12H5"/>',
