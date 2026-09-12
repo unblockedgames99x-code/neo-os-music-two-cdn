@@ -204,8 +204,17 @@
 
   var nextButton = document.getElementById("npmNextBtn");
   var previousButton = document.getElementById("npmPrevBtn");
+  var footerNextButton = document.getElementById("spotifyNextBtn");
+  var footerPreviousButton = document.getElementById("spotifyPrevBtn");
   if (nextButton) nextButton.addEventListener("click", playNext);
   if (previousButton) previousButton.addEventListener("click", playPrevious);
+  if (footerNextButton) footerNextButton.addEventListener("click", playNext);
+  if (footerPreviousButton) footerPreviousButton.addEventListener("click", playPrevious);
+
+  var playerLike = typeof document.querySelector === "function" ? document.querySelector(".player-like") : null;
+  if (playerLike) playerLike.addEventListener("click", function () {
+    if (currentTrack) toggleFavourite(currentTrack);
+  });
 
   var autoplayButton = document.getElementById("autoplayBtn");
   if (autoplayButton) {

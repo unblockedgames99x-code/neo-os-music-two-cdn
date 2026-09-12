@@ -21,9 +21,12 @@ const searchInput=document.getElementById('searchInput');
 
 const npBar=document.getElementById('npBar');
 const npTitle=document.getElementById('npTitle');
+const npArtist=document.getElementById('npArtist');
 const npPlayBtn=document.getElementById('npPlayBtn');
 const npProgressFill=document.getElementById('npProgressFill');
 const npThumb=document.getElementById('npThumb');
+const npCurrentTime=document.getElementById('npCurrentTime');
+const npDurationInline=document.getElementById('npDurationInline');
 const npmView=document.getElementById('npmView');
 const npmCover=document.getElementById('npmCover');
 const npmTrackTitle=document.getElementById('npmTrackTitle');
@@ -164,9 +167,8 @@ function renderCard(track) {
             <i data-lucide="play"></i>
         </div>
     </div>
-    <div class="card-title" title="${escapeHtml(track.title)} - ${escapeHtml(track.artist)}">
-        ${escapeHtml(track.title)}
-    </div>`;
+    <div class="card-title" title="${escapeHtml(track.title)} - ${escapeHtml(track.artist)}">${escapeHtml(track.title)}</div>
+    <div class="card-artist">${escapeHtml(track.artist)}</div>`;
     applyCoverFallback(card.querySelector('.card-art img'),track.thumb);
     card.querySelector('.card-play').addEventListener('click',(e)=>{
         e.stopPropagation();
@@ -323,6 +325,7 @@ function playTrack(track) {
     currentTrack=track;
     currentPlayingId=track.id;
     npTitle.textContent=track.title;
+    if (npArtist) npArtist.textContent=track.artist;
     applyCoverFallback(npThumb,track.thumb);
     npThumb.style.display='block';
     npmProgressFill.style.width='0%';
@@ -340,6 +343,7 @@ function playTrack(track) {
     if (track.duration) amLyricsEl.songDurationMs=track.duration*1000;
     amLyricsEl.currentTime=0;
     npmDuration.textContent=track.duration?formatTime(track.duration):'0:00';
+    if (npDurationInline) npDurationInline.textContent=track.duration?formatTime(track.duration):'0:00';
     showNPView();
     document.querySelectorAll('.music-card.playing').forEach((el)=>el.classList.remove('playing'));
     const el=document.querySelector(`.music-card[data-id="${track.id}"]`);
@@ -378,6 +382,7 @@ function updProgress() {
     npProgressFill.style.width=`${pct}%`;
     npmProgressHandle.style.left=`${pct}%`;
     npmCurrentTime.textContent=formatTime(audioEl.currentTime);
+    if (npCurrentTime) npCurrentTime.textContent=formatTime(audioEl.currentTime);
     amLyricsEl.currentTime=audioEl.currentTime*1000;
 }
 
@@ -461,6 +466,16 @@ function showNPView() {
     contentArea.style.display='none';
     npmView.classList.add('visible');
 }
+
+document.getElementById('musicBackButton')?.addEventListener('click',hideNPView);
+
+document.querySelectorAll('.sb-item[role="button"]').forEach((item)=>{
+    item.addEventListener('keydown',(event)=>{
+        if(event.key!=='Enter'&&event.key!==' ')return;
+        event.preventDefault();
+        item.click();
+    });
+});
 
 function hideNPView() {
     npmView.classList.remove('visible');

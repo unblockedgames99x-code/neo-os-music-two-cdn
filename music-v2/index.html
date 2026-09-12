@@ -53,30 +53,50 @@
     .queue-meta{min-width:0}.queue-title,.queue-artist{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.queue-title{font-size:13px;font-weight:600}.queue-artist{font-size:11px;color:#7f8998;margin-top:3px}.queue-num{font-size:11px;color:#667080}
     @media(max-width:700px){.np-back-btn{top:12px;left:12px;width:38px;height:38px}}
   </style>
-  <link rel="stylesheet" href="./neo-meting-theme.css?v=20260912-proxy-music-v2">
+  <link rel="stylesheet" href="./neo-meting-theme.css?v=20260912-proxy-music-v3">
+  <link rel="stylesheet" href="./spotify-shell.css?v=20260912-spotify-layout-v1">
   <script src="../neo-app-theme.js?v=20260910-meting-v1"></script>
   <script src="../neo-link-proxy.js?v=20260912-all-links-v2"></script>
   <script src="../neo-proxy-client.js?v=20260912-resource-proxy-v1"></script>
   <script src="./neo-meting-integration.js?v=20260912-proxy-music-v1"></script>
 </head>
 <body>
-  <div class="sidebar">
-    <div class="sb-item active" data-view="home"><i data-lucide="home"></i><span>Home</span></div>
-    <div class="sb-item" data-view="library"><i data-lucide="library"></i><span>Your Library</span></div>
-    <div class="sb-divider"></div>
-    <div class="sb-fav-header" id="sbFavHeader"><i data-lucide="chevron-down"></i><span>Favorites</span></div>
-    <div class="sb-favourites" id="sbFavourites"></div>
-  </div>
-  <div class="main-panel">
-    <div class="top-bar">
-      <div class="np-inline" id="npBar">
-        <img id="npThumb" class="np-icon is-fallback-cover" src="./assets/cover-fallback.svg" alt="" style="display:none">
-        <div class="np-inline-meta"><div class="np-title" id="npTitle">Nothing playing</div><div class="np-progress"><div class="np-progress-fill" id="npProgressFill"></div></div></div>
-        <button class="np-play-btn" id="npPlayBtn" aria-label="Play or pause"><i data-lucide="play"></i></button>
-      </div>
-      <div class="search-wpr"><i data-lucide="search" class="search-icon"></i><input type="text" class="search-input" id="searchInput" autocomplete="off" placeholder="Search for a song, artist or album..."></div>
+  <aside class="sidebar" aria-label="Music navigation">
+    <div class="music-brand" aria-label="NEO Music">
+      <span class="music-brand-mark"><i data-lucide="audio-lines"></i></span>
+      <strong>NEO Music</strong>
     </div>
-    <div class="content-area" id="contentArea"><div class="card-grid" id="cardGrid"></div></div>
+    <nav class="music-primary-nav" aria-label="Primary">
+      <div class="sb-item active" data-view="home" role="button" tabindex="0"><i data-lucide="home"></i><span>Home</span></div>
+      <label class="sidebar-search-shortcut" for="searchInput"><i data-lucide="search"></i><span>Search</span></label>
+    </nav>
+    <section class="library-panel" aria-labelledby="libraryTitle">
+      <div class="library-title-row">
+        <div class="sb-item library-link" data-view="library" role="button" tabindex="0"><i data-lucide="library"></i><span id="libraryTitle">Your Library</span></div>
+        <button type="button" class="library-add" aria-label="Create playlist"><i data-lucide="plus"></i></button>
+      </div>
+      <button type="button" class="library-filter">Playlists</button>
+      <div class="sb-fav-header" id="sbFavHeader"><i data-lucide="chevron-down"></i><span>Liked songs</span></div>
+      <div class="sb-favourites" id="sbFavourites"></div>
+    </section>
+  </aside>
+  <main class="main-panel">
+    <header class="top-bar">
+      <div class="history-controls" aria-label="Navigation history">
+        <button type="button" aria-label="Back" id="musicBackButton"><i data-lucide="chevron-left"></i></button>
+        <button type="button" aria-label="Forward" disabled><i data-lucide="chevron-right"></i></button>
+      </div>
+      <div class="search-wpr"><i data-lucide="search" class="search-icon"></i><input type="text" class="search-input" id="searchInput" autocomplete="off" placeholder="What do you want to play?"></div>
+      <button type="button" class="profile-chip" aria-label="Music profile"><span>G</span><strong>Guest</strong></button>
+    </header>
+    <div class="content-area" id="contentArea">
+      <section class="music-welcome" aria-labelledby="musicHomeTitle">
+        <p>NEO MUSIC</p>
+        <h1 id="musicHomeTitle">Good afternoon</h1>
+        <div class="music-filter-pills" aria-label="Music filters"><button class="active" type="button">All</button><button type="button">Music</button><button type="button">Playlists</button></div>
+      </section>
+      <div class="card-grid" id="cardGrid"></div>
+    </div>
     <div class="np-view" id="npmView">
       <button class="np-back-btn" id="npmBackBtn" type="button" aria-label="Back to previous page" title="Back to previous page"><i data-lucide="arrow-left"></i></button>
       <div class="np-left">
@@ -91,18 +111,35 @@
           <button class="np-skip-btn" id="npmNextBtn" aria-label="Next track"><i data-lucide="skip-forward"></i></button>
           <button class="np-fav-btn" id="npmFavBtn" aria-label="Favorite"><i data-lucide="heart"></i></button>
         </div>
-        <div class="np-extra-controls">
-          <div class="volume-control"><button class="np-tool-btn" id="muteBtn" aria-label="Mute"><i data-lucide="volume-2"></i></button><input class="volume-slider" id="volumeSlider" type="range" min="0" max="1" step="0.01" value="0.8" aria-label="Volume"></div>
-          <button class="np-tool-btn" id="autoplayBtn" aria-label="Repeat off" aria-pressed="false" title="Repeat off" data-repeat-mode="off"><i data-lucide="repeat-2"></i></button>
-          <button class="np-tool-btn" id="queueBtn" aria-label="Open playlist queue" title="Playlist queue"><i data-lucide="list-music"></i></button>
-        </div>
       </div>
       <div class="np-right"><am-lyrics id="amLyricsEl" song-title="" song-artist="" highlight-color="#60a5fa" font-family="'Inter', sans-serif" autoscroll interpolate hide-source-footer></am-lyrics></div>
     </div>
-  </div>
+  </main>
+  <footer class="np-inline spotify-player visible" id="npBar" aria-label="Now playing">
+    <div class="spotify-track">
+      <img id="npThumb" class="np-icon is-fallback-cover" src="./assets/cover-fallback.svg" alt="Current album cover">
+      <div class="np-inline-meta"><div class="np-title" id="npTitle">Nothing playing</div><div class="np-artist" id="npArtist">Choose something from Home</div></div>
+      <button class="player-like" type="button" aria-label="Save track"><i data-lucide="heart"></i></button>
+    </div>
+    <div class="spotify-transport">
+      <div class="spotify-buttons">
+        <button class="np-tool-btn" id="autoplayBtn" aria-label="Repeat off" aria-pressed="false" title="Repeat off" data-repeat-mode="off"><i data-lucide="repeat-2"></i></button>
+        <button class="np-tool-btn" id="spotifyPrevBtn" aria-label="Previous track"><i data-lucide="skip-back"></i></button>
+        <button class="np-play-btn" id="npPlayBtn" aria-label="Play or pause"><i data-lucide="play"></i></button>
+        <button class="np-tool-btn" id="spotifyNextBtn" aria-label="Next track"><i data-lucide="skip-forward"></i></button>
+        <button class="np-tool-btn" type="button" aria-label="Shuffle"><i data-lucide="shuffle-2"></i></button>
+      </div>
+      <div class="np-progress" aria-label="Playback progress"><span id="npCurrentTime">0:00</span><div class="spotify-progress-track"><div class="np-progress-fill" id="npProgressFill"></div></div><span id="npDurationInline">0:00</span></div>
+    </div>
+    <div class="spotify-volume">
+      <button class="np-tool-btn" id="queueBtn" aria-label="Open playlist queue" title="Playlist queue"><i data-lucide="list-music"></i></button>
+      <button class="np-tool-btn" id="muteBtn" aria-label="Mute"><i data-lucide="volume-2"></i></button>
+      <input class="volume-slider" id="volumeSlider" type="range" min="0" max="1" step="0.01" value="0.8" aria-label="Volume">
+    </div>
+  </footer>
   <aside class="queue-panel" id="queuePanel" aria-label="Playlist queue"><div class="queue-head"><span>Up next</span><button class="np-tool-btn" id="queueCloseBtn" aria-label="Close playlist"><i data-lucide="x"></i></button></div><div class="queue-list" id="queueList"></div></aside>
-  <script src="./vendor/meting-ui.js?v=20260912-home-warm-v1"></script>
-  <script src="./neo-meting-player.js?v=20260912-proxy-music-v1"></script>
+  <script src="./vendor/meting-ui.js?v=20260912-spotify-layout-v1"></script>
+  <script src="./neo-meting-player.js?v=20260912-spotify-layout-v1"></script>
   <script src="./neo-os-bridge.js?v=20260910-repeat-v1"></script>
 </body>
 </html>
