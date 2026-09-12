@@ -14,7 +14,10 @@
     var id = card && card.dataset.id;
     if (id && image.dataset.artRetry !== "youtube") {
       image.dataset.artRetry = "youtube";
-      image.src = "https://i.ytimg.com/vi/" + encodeURIComponent(id) + "/hqdefault.jpg";
+      var youtubeCover = "https://i.ytimg.com/vi/" + encodeURIComponent(id) + "/hqdefault.jpg";
+      var covers = window.NEO_MUSIC_COVERS;
+      if (covers && typeof covers.set === "function") covers.set(image, youtubeCover);
+      else image.src = youtubeCover;
       return;
     }
     if (image.dataset.artRetry !== "placeholder") {
@@ -145,7 +148,7 @@
       row.className = "queue-item" + (index === queueIndex ? " playing" : "");
       var covers = window.NEO_MUSIC_COVERS;
       var cover = covers ? covers.url(track.thumb) : String(track.thumb || "");
-      row.innerHTML = '<img src="' + escapeHtml(cover) + '" alt="' + escapeHtml(track.title) + '" decoding="async"><div class="queue-meta"><div class="queue-title">' + escapeHtml(track.title) + '</div><div class="queue-artist">' + escapeHtml(track.artist) + '</div></div><span class="queue-num">' + (index + 1) + "</span>";
+      row.innerHTML = '<img src="' + escapeHtml(covers ? covers.fallback : cover) + '" alt="' + escapeHtml(track.title) + '" decoding="async"><div class="queue-meta"><div class="queue-title">' + escapeHtml(track.title) + '</div><div class="queue-artist">' + escapeHtml(track.artist) + '</div></div><span class="queue-num">' + (index + 1) + "</span>";
       if (covers) covers.set(row.querySelector("img"), track.thumb);
       row.addEventListener("click", function () {
         queueIndex = index;

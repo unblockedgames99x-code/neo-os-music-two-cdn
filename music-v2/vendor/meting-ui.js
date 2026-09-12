@@ -64,10 +64,48 @@ function applyCoverFallback(image,value) {
         image.classList.add('is-fallback-cover');
         image.src=FALLBACK_COVER_URL;
     };
-    image.src=cover;
+    if (/^https?:/i.test(cover)&&window.NEO_PROXY_CLIENT) {
+        image.src=FALLBACK_COVER_URL;
+        window.NEO_PROXY_CLIENT.image(cover).then((route)=>{if(image.isConnected) image.src=route;}).catch(()=>{});
+    } else image.src=cover;
 }
 
 window.NEO_MUSIC_COVERS=Object.freeze({fallback:FALLBACK_COVER,url:coverUrl,set:applyCoverFallback});
+
+function openMusicEventStream(url) {
+    const controller=new AbortController();
+    const stream={onmessage:null,onerror:null,closed:false,close(){this.closed=true;controller.abort();}};
+    let watchdog=0;
+    const fail=(error)=>{if(stream.closed||controller.signal.aborted)return;stream.closed=true;controller.abort();if(typeof stream.onerror==='function')stream.onerror(error);};
+    const arm=()=>{clearTimeout(watchdog);watchdog=setTimeout(()=>fail(new Error('Music server timed out.')),12000);};
+    Promise.resolve().then(async()=>{
+        let route=url;
+        if(window.NEO_PROXY_CLIENT) route=await window.NEO_PROXY_CLIENT.resolve(url,'music-catalog');
+        arm();
+        const response=await fetch(route,{signal:controller.signal,cache:'no-store',credentials:'omit',headers:{Accept:'text/event-stream'}});
+        if(!response.ok||!response.body) throw new Error(`Music server returned ${response.status}.`);
+        const reader=response.body.getReader();
+        const decoder=new TextDecoder();
+        let buffer='';
+        while(!stream.closed){
+            const chunk=await reader.read();
+            if(chunk.done)break;
+            arm();
+            buffer+=decoder.decode(chunk.value,{stream:true});
+            const lines=buffer.split(/\r?\n/);
+            buffer=lines.pop()||'';
+            lines.forEach((line)=>{
+                if(!line.startsWith('data:'))return;
+                const data=line.slice(5).trimStart();
+                if(typeof stream.onmessage==='function')stream.onmessage({data});
+            });
+        }
+        if(buffer.startsWith('data:')&&typeof stream.onmessage==='function')stream.onmessage({data:buffer.slice(5).trimStart()});
+        clearTimeout(watchdog);
+        if(!stream.closed&&typeof stream.onmessage==='function')stream.onmessage({data:'[DONE]'});
+    }).catch((error)=>{clearTimeout(watchdog);if(error?.name!=='AbortError')fail(error);});
+    return stream;
+}
 
 function showCatalogStatus(title,detail,retry,label='Try again') {
     cardGrid.innerHTML='';
@@ -105,7 +143,7 @@ function renderCard(track) {
     card.dataset.id=track.id;
     card.innerHTML=`
     <div class="card-art">
-        <img src="${escapeHtml(coverUrl(track.thumb))}" alt="${escapeHtml(track.title)}" loading="lazy" decoding="async">
+        <img src="${escapeHtml(FALLBACK_COVER_URL)}" alt="${escapeHtml(track.title)}" loading="lazy" decoding="async">
         <button class="card-fav-btn${isFavourite(track.id)?' faved':''}" data-id="${track.id}">
             <i data-lucide="heart"></i>
         </button>
@@ -137,7 +175,7 @@ function searchVinyl(query) {
     cardGrid.className='card-grid';
     showCatalogStatus('Searching music…','Connecting to the music service.');
     const url=`${API_BASE}/music/v1/search?q=${encodeURIComponent(query)}&limit=20`;
-    const es=new EventSource(url);
+    const es=openMusicEventStream(url);
     currentEventSource=es;
     es.onmessage=(event)=>{
         if (event.data==='[DONE]') {
@@ -187,7 +225,7 @@ function fetchHome() {
     cardGrid.className='home-sections';
     showCatalogStatus('Loading music…','Connecting to the music service.');
     const url=`${API_BASE}/music/v1/home?limit=10`;
-    const es=new EventSource(url);
+    const es=openMusicEventStream(url);
     currentEventSource=es;
     es.onmessage=(event)=>{
         if (event.data==='[DONE]') {
@@ -258,6 +296,19 @@ function playTrack(track) {
         playback.play(audioEl,track).catch((err)=>{
             if (err?.name==='AbortError') return;
             console.error('playback failed',err);
+            npmTrackArtist.textContent='Playback unavailable — choose another track';
+            setPlayButtonState(false);
+        });
+    } else if (window.NEO_PROXY_CLIENT) {
+        const requestedId=String(track.id);
+        npmTrackArtist.textContent='Connecting through NEO proxy…';
+        window.NEO_PROXY_CLIENT.media(url).then((route)=>{
+            if(!currentTrack||String(currentTrack.id)!==requestedId)return;
+            audioEl.src=route;
+            npmTrackArtist.textContent=track.artist;
+            audioEl.play().catch((err)=>console.error('playback failed',err));
+        }).catch((err)=>{
+            console.error('playback proxy failed',err);
             npmTrackArtist.textContent='Playback unavailable — choose another track';
             setPlayButtonState(false);
         });
@@ -433,7 +484,7 @@ function renderSBFavourites() {
         const item=document.createElement('div');
         item.className='sb-fav-item';
         item.innerHTML=`
-        <img src="${escapeHtml(coverUrl(track.thumb))}" alt="" loading="lazy" decoding="async">
+        <img src="${escapeHtml(FALLBACK_COVER_URL)}" alt="" loading="lazy" decoding="async">
         <span>${escapeHtml(track.title)}</span>`;
         applyCoverFallback(item.querySelector('img'),track.thumb);
         item.addEventListener('click',()=>playTrack(track));
