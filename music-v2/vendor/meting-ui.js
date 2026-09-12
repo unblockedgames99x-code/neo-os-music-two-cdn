@@ -136,7 +136,7 @@ function searchVinyl(query) {
     }
     cardGrid.className='card-grid';
     showCatalogStatus('Searching music…','Connecting to the music service.');
-    const url=`${API_BASE}/api/music/ytm/search?q=${encodeURIComponent(query)}&limit=20`;
+    const url=`${API_BASE}/music/v1/search?q=${encodeURIComponent(query)}&limit=20`;
     const es=new EventSource(url);
     currentEventSource=es;
     es.onmessage=(event)=>{
@@ -186,7 +186,7 @@ function fetchHome() {
     }
     cardGrid.className='home-sections';
     showCatalogStatus('Loading music…','Connecting to the music service.');
-    const url=`${API_BASE}/api/music/ytm/home?limit=10`;
+    const url=`${API_BASE}/music/v1/home?limit=10`;
     const es=new EventSource(url);
     currentEventSource=es;
     es.onmessage=(event)=>{
@@ -218,7 +218,7 @@ function playTrack(track) {
         showNPView();
         return;
     }
-    const url=`${API_BASE}/api/sp/audio/${encodeURIComponent(track.id)}`;
+    const url=`${API_BASE}/music/v1/audio/${encodeURIComponent(track.id)}`;
     if (!audioEl) {
         audioEl=new Audio();
         audioEl.crossOrigin='anonymous';

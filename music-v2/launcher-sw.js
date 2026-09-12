@@ -19,7 +19,7 @@ self.addEventListener("fetch", (event) => {
   const appUrl = new URL(APP_ROUTE, self.registration.scope);
   if (event.request.mode !== "navigate" || requestUrl.origin !== appUrl.origin || requestUrl.pathname !== appUrl.pathname) return;
   event.respondWith(
-    fetch(new URL("index.html?neo-app-shell=1&v=20260911-music-server-v3", self.location.href), { cache: "force-cache", credentials: "omit" })
+    fetch(new URL("index.html?neo-app-shell=1&v=20260911-music-server-v4", self.location.href), { cache: "force-cache", credentials: "omit" })
       .then((response) => {
         if (!response.ok) throw new Error(`App document returned ${response.status}.`);
         return response.text();

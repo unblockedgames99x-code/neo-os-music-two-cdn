@@ -34,7 +34,7 @@
         host.textContent = 'NEO Music needs service-worker support.';
         return;
       }
-      var workerUrl = new URL('launcher-sw.js?v=20260911-music-server-v3', location.href).href;
+      var workerUrl = new URL('launcher-sw.js?v=20260911-music-server-v4', location.href).href;
       var scope = new URL('./', location.href).pathname;
       navigator.serviceWorker.register(workerUrl, { scope: scope })
         .then(waitUntilActive)
