@@ -3,6 +3,19 @@ lucide.createIcons();
 const API_BASE=String(window.__NEO_MUSIC_SERVER_ORIGIN__||'').replace(/\/+$/,'');
 const FALLBACK_COVER='./assets/cover-fallback.svg';
 const FALLBACK_COVER_URL=new URL(FALLBACK_COVER,document.baseURI).href;
+const HOME_CACHE_KEY='neo-music-home-v2';
+const HOME_STARTER_SECTIONS=[
+    {section:'Popular Songs',tracks:[
+        {src:'ytm',id:'8VKD-IlvibI',title:'Unholy',artist:'Sam Smith',album:'Gloria',duration:157,thumb:'https://yt3.googleusercontent.com/uimtOO9FPrfJBLL3cJhqdVvkVfliVgIZuPW9-2DQjZRa8fwjiXwQP1lv7Bf83yBfZXRpr-rpc9Tfkq0=w226-h226-l90'},
+        {src:'ytm',id:'PJTVHna4npo',title:'RIGHT NOW',artist:'Tyla',album:'A*POP',duration:186,thumb:'https://yt3.googleusercontent.com/x7tAy9192JzD_0USLyapciAzf5HX8jgzEmGM5kGlgVtJkMQzNDt2c3jwcdTnGv5qx_OFrinSxNCGmG4=w226-h226-l90'},
+        {src:'ytm',id:'r7zTKRonHXM',title:'Closer (feat. Halsey)',artist:'The Chainsmokers',album:'Collage',duration:246,thumb:'https://yt3.googleusercontent.com/jvgMIjgbvnqnwLwjtqNa0euo9WStdIxrJnpQURgbwuPazT2OpZUdYPZe1gss2fK39oC8ITofFmeGxKY=w226-h226-l90'}
+    ]},
+    {section:'New Releases',tracks:[
+        {src:'ytm',id:'rPmZucO77sg',title:'Ama hem hem (feat. ShaunMusiq)',artist:'Thatohatsi',album:'Ama hem hem',duration:451,thumb:'https://yt3.googleusercontent.com/yxzU9K7hqqEin6wPpGjwIW-jldC5AQqLKhJ7EEIDLDtcCJUA5wT4shDMrhm-V2aYDWbXwwUlclfbGcP0=w226-h226-l90'},
+        {src:'ytm',id:'SmFjtPWXUas',title:'purple',artist:'Olivia Rodrigo',album:'you seem pretty sad for a girl so in love',duration:241,thumb:'https://yt3.googleusercontent.com/q0szuVtXvUdftTC8k9fjwazdEpoaCyWTZ1d5Xa3GWHhQPD6_59W_rPlmZRFa2rSFPLTmfOGEgvPfF9uBVg=w226-h226-l90'},
+        {src:'ytm',id:'Q2U8Qk80-Es',title:'Wewe',artist:'King Saha',album:'Wewe',duration:178,thumb:'https://yt3.googleusercontent.com/MjvUpJHxY2ejqjOZ0BBID206-Z1rUPMkflyzReyR873Bv8WfE7uyq08dWUbczOHG4KyTGFrcK6F5AIRA=w226-h226-l90'}
+    ]}
+];
 const cardGrid=document.getElementById('cardGrid');
 const searchInput=document.getElementById('searchInput');
 
@@ -74,10 +87,10 @@ window.NEO_MUSIC_COVERS=Object.freeze({fallback:FALLBACK_COVER,url:coverUrl,set:
 
 function openMusicEventStream(url) {
     const controller=new AbortController();
-    const stream={onmessage:null,onerror:null,closed:false,close(){this.closed=true;controller.abort();}};
     let watchdog=0;
+    const stream={onmessage:null,onerror:null,closed:false,close(){this.closed=true;clearTimeout(watchdog);controller.abort();}};
     const fail=(error)=>{if(stream.closed||controller.signal.aborted)return;stream.closed=true;controller.abort();if(typeof stream.onerror==='function')stream.onerror(error);};
-    const arm=()=>{clearTimeout(watchdog);watchdog=setTimeout(()=>fail(new Error('Music server timed out.')),12000);};
+    const arm=()=>{clearTimeout(watchdog);watchdog=setTimeout(()=>fail(new Error('Music server timed out.')),30000);};
     Promise.resolve().then(async()=>{
         let route=url;
         if(window.NEO_PROXY_CLIENT) route=await window.NEO_PROXY_CLIENT.resolve(url,'music-catalog');
@@ -217,27 +230,67 @@ function renderSection(title,tracks) {
     return section;
 }
 
+function validHomeSections(value) {
+    if (!Array.isArray(value)) return [];
+    return value.map((entry)=>{
+        const section=String(entry?.section||'').trim();
+        const tracks=Array.isArray(entry?.tracks)?entry.tracks.filter((track)=>
+            track&&/^[A-Za-z0-9_-]{6,20}$/.test(String(track.id||''))&&String(track.title||'').trim()&&String(track.artist||'').trim()
+        ).slice(0,10):[];
+        return section&&tracks.length?{section,tracks}:null;
+    }).filter(Boolean).slice(0,8);
+}
+
+function readHomeSnapshot() {
+    try {
+        const saved=JSON.parse(localStorage.getItem(HOME_CACHE_KEY)||'null');
+        if (!saved||Date.now()-Number(saved.savedAt||0)>86400000) return [];
+        return validHomeSections(saved.sections);
+    } catch (err) { return []; }
+}
+
+function saveHomeSnapshot(sections) {
+    try { localStorage.setItem(HOME_CACHE_KEY,JSON.stringify({savedAt:Date.now(),sections:validHomeSections(sections)})); }
+    catch (err) {}
+}
+
+function renderHomeSnapshot(sections) {
+    cardGrid.replaceChildren();
+    sections.forEach((entry)=>cardGrid.appendChild(renderSection(entry.section,entry.tracks)));
+    lucide.createIcons();
+}
+
 function fetchHome() {
     if (currentEventSource) {
         currentEventSource.close();
         currentEventSource=null;
     }
     cardGrid.className='home-sections';
-    showCatalogStatus('Loading music…','Connecting to the music service.');
+    const homeSnapshot=readHomeSnapshot();
+    renderHomeSnapshot(homeSnapshot.length?homeSnapshot:HOME_STARTER_SECTIONS);
     const url=`${API_BASE}/music/v1/home?limit=10`;
     const es=openMusicEventStream(url);
     currentEventSource=es;
+    const liveSections=[];
+    let liveHomeStarted=false;
     es.onmessage=(event)=>{
         if (event.data==='[DONE]') {
             es.close();
             currentEventSource=null;
+            if (liveSections.length) saveHomeSnapshot(liveSections);
             if (!hasCatalogResults()) showCatalogStatus('Music server unavailable','DrFrost did not return any music.',fetchHome);
             return;
         }
         try {
             const {section,tracks}=JSON.parse(event.data);
-            clearCatalogStatus();
-            cardGrid.appendChild(renderSection(section,tracks));
+            const parsed=validHomeSections([{section,tracks}])[0];
+            if (!parsed) return;
+            liveSections.push(parsed);
+            if (!liveHomeStarted) {
+                cardGrid.replaceChildren();
+                liveHomeStarted=true;
+            }
+            cardGrid.appendChild(renderSection(parsed.section,parsed.tracks));
             lucide.createIcons();
         } catch (err) {
             console.error('failed to parse home section',err,event.data);
