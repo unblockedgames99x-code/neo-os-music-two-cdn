@@ -11,6 +11,11 @@
   var configuredOrigin = String(window.__NEO_MUSIC_SERVER_ORIGIN__ || DEFAULT_SERVER_ORIGIN).trim();
   var serverOrigin = configuredOrigin.replace(/\/+$/, "");
 
+  function isServerRelayUrl(value) {
+    try { return new URL(String(value || ""), document.baseURI).origin === new URL(serverOrigin).origin; }
+    catch (error) { return false; }
+  }
+
   window.__NEO_MUSIC_SERVER_ORIGIN__ = serverOrigin;
   window.__NEO_MUSIC_API__ = Object.freeze({
     base: serverOrigin,
@@ -22,7 +27,8 @@
     },
     trackUrl: function (id) {
       return serverOrigin + "/music/v1/audio/" + encodeURIComponent(id || "");
-    }
+    },
+    isRelayUrl: isServerRelayUrl
   });
 
   // Keep every external Music request on the shared NEO web route. There is
@@ -36,6 +42,10 @@
     try { target = new URL(raw || "", document.baseURI); }
     catch (error) { return nativeFetch(input, options); }
     if (target.origin === location.origin || !/^https?:$/.test(target.protocol)) return nativeFetch(input, options);
+    // The NEO Music API is already a server-side relay with CORS and byte-range
+    // support. Sending it through the full browser proxy again adds a 40-second
+    // cold start and breaks streaming on low-power Chromebooks.
+    if (isServerRelayUrl(target.href)) return nativeFetch(target.href, options);
     if (window.parent === window && optionalLyricsHosts.test(target.hostname)) {
       return Promise.resolve(new Response('{"results":[]}', {
         status: 200,

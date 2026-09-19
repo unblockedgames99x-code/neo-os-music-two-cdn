@@ -51,6 +51,27 @@ let debounceTimer=null;
 let audioEl=null;
 let currentPlayingId=null;
 let currentTrack=null;
+let lyricsTrackId=null;
+
+function isMusicRelayUrl(value) {
+    return Boolean(window.__NEO_MUSIC_API__&&typeof window.__NEO_MUSIC_API__.isRelayUrl==='function'&&window.__NEO_MUSIC_API__.isRelayUrl(value));
+}
+
+function resolveMusicRoute(url,kind) {
+    if (isMusicRelayUrl(url)) return Promise.resolve(url);
+    if(window.NEO_PROXY_CLIENT&&typeof window.NEO_PROXY_CLIENT.resolve==='function') return window.NEO_PROXY_CLIENT.resolve(url,kind);
+    return Promise.reject(new Error('NEO web proxy is unavailable.'));
+}
+
+function loadLyricsForTrack(track) {
+    if(!track||lyricsTrackId===String(track.id))return;
+    lyricsTrackId=String(track.id);
+    amLyricsEl.songTitle=track.title;
+    amLyricsEl.songArtist=track.artist;
+    amLyricsEl.query=`${track.title} ${track.artist}`;
+    if (track.duration) amLyricsEl.songDurationMs=track.duration*1000;
+    amLyricsEl.currentTime=0;
+}
 
 function escapeHtml(str) {
     const div=document.createElement('div');
@@ -97,8 +118,7 @@ function openMusicEventStream(url) {
     const fail=(error)=>{if(stream.closed||controller.signal.aborted)return;stream.closed=true;controller.abort();if(typeof stream.onerror==='function')stream.onerror(error);};
     const arm=()=>{clearTimeout(watchdog);watchdog=setTimeout(()=>fail(new Error('Music server timed out.')),30000);};
     Promise.resolve().then(async()=>{
-        if(!window.NEO_PROXY_CLIENT||typeof window.NEO_PROXY_CLIENT.resolve!=='function') throw new Error('NEO web proxy is unavailable.');
-        const route=await window.NEO_PROXY_CLIENT.resolve(url,'music-catalog');
+        const route=await resolveMusicRoute(url,'music-catalog');
         arm();
         const response=await fetch(route,{signal:controller.signal,cache:'no-store',credentials:'omit',headers:{Accept:'text/event-stream'}});
         if(!response.ok||!response.body) throw new Error(`Music server returned ${response.status}.`);
@@ -322,6 +342,13 @@ function playTrack(track) {
         audioEl.addEventListener('play',()=>setPlayButtonState(true));
         audioEl.addEventListener('pause',()=>setPlayButtonState(false));
         audioEl.addEventListener('ended',()=>setPlayButtonState(false));
+        audioEl.addEventListener('playing',()=>loadLyricsForTrack(currentTrack));
+        audioEl.addEventListener('error',()=>{
+            if(!currentTrack)return;
+            npmTrackArtist.textContent='Playback unavailable — choose another track';
+            setPlayButtonState(false);
+        });
+        audioEl.preload='metadata';
     }
     audioEl.pause();
     currentTrack=track;
@@ -339,10 +366,6 @@ function playTrack(track) {
     npmProgressHandle.style.left='0%';
     npmCurrentTime.textContent='0:00';
     npmFavBtn.classList.toggle('faved',isFavourite(track.id));
-    amLyricsEl.songTitle=track.title;
-    amLyricsEl.songArtist=track.artist;
-    amLyricsEl.query=`${track.title} ${track.artist}`;
-    if (track.duration) amLyricsEl.songDurationMs=track.duration*1000;
     amLyricsEl.currentTime=0;
     npmDuration.textContent=track.duration?formatTime(track.duration):'0:00';
     if (npDurationInline) npDurationInline.textContent=track.duration?formatTime(track.duration):'0:00';
@@ -350,12 +373,13 @@ function playTrack(track) {
     document.querySelectorAll('.music-card.playing').forEach((el)=>el.classList.remove('playing'));
     const el=document.querySelector(`.music-card[data-id="${track.id}"]`);
     if (el) el.classList.add('playing');
-    if (window.NEO_PROXY_CLIENT&&typeof window.NEO_PROXY_CLIENT.media==='function') {
+    {
         const requestedId=String(track.id);
-        npmTrackArtist.textContent='Connecting through NEO proxy…';
-        window.NEO_PROXY_CLIENT.media(url).then((route)=>{
+        npmTrackArtist.textContent=isMusicRelayUrl(url)?'Loading audio…':'Connecting through NEO proxy…';
+        resolveMusicRoute(url,'media').then((route)=>{
             if(!currentTrack||String(currentTrack.id)!==requestedId)return;
             audioEl.src=route;
+            audioEl.load();
             npmTrackArtist.textContent=track.artist;
             audioEl.play().catch((err)=>console.error('playback failed',err));
         }).catch((err)=>{
@@ -363,9 +387,6 @@ function playTrack(track) {
             npmTrackArtist.textContent='Playback unavailable — choose another track';
             setPlayButtonState(false);
         });
-    } else {
-        npmTrackArtist.textContent='NEO web proxy unavailable';
-        setPlayButtonState(false);
     }
 }
 
