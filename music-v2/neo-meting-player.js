@@ -17,7 +17,7 @@
       var youtubeCover = "https://i.ytimg.com/vi/" + encodeURIComponent(id) + "/hqdefault.jpg";
       var covers = window.NEO_MUSIC_COVERS;
       if (covers && typeof covers.set === "function") covers.set(image, youtubeCover);
-      else image.src = youtubeCover;
+      else image.src = artworkPlaceholder(image.alt || "Music");
       return;
     }
     if (image.dataset.artRetry !== "placeholder") {

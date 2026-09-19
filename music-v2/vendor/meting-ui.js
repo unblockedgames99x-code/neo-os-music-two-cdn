@@ -80,9 +80,11 @@ function applyCoverFallback(image,value) {
         image.classList.add('is-fallback-cover');
         image.src=FALLBACK_COVER_URL;
     };
-    if (/^https?:/i.test(cover)&&window.NEO_PROXY_CLIENT) {
+    if (/^https?:/i.test(cover)) {
         image.src=FALLBACK_COVER_URL;
-        window.NEO_PROXY_CLIENT.image(cover).then((route)=>{if(image.isConnected) image.src=route;}).catch(()=>{});
+        if(window.NEO_PROXY_CLIENT&&typeof window.NEO_PROXY_CLIENT.image==='function') {
+            window.NEO_PROXY_CLIENT.image(cover).then((route)=>{if(image.isConnected) image.src=route;}).catch(()=>{});
+        }
     } else image.src=cover;
 }
 
@@ -95,8 +97,8 @@ function openMusicEventStream(url) {
     const fail=(error)=>{if(stream.closed||controller.signal.aborted)return;stream.closed=true;controller.abort();if(typeof stream.onerror==='function')stream.onerror(error);};
     const arm=()=>{clearTimeout(watchdog);watchdog=setTimeout(()=>fail(new Error('Music server timed out.')),30000);};
     Promise.resolve().then(async()=>{
-        let route=url;
-        if(window.NEO_PROXY_CLIENT) route=await window.NEO_PROXY_CLIENT.resolve(url,'music-catalog');
+        if(!window.NEO_PROXY_CLIENT||typeof window.NEO_PROXY_CLIENT.resolve!=='function') throw new Error('NEO web proxy is unavailable.');
+        const route=await window.NEO_PROXY_CLIENT.resolve(url,'music-catalog');
         arm();
         const response=await fetch(route,{signal:controller.signal,cache:'no-store',credentials:'omit',headers:{Accept:'text/event-stream'}});
         if(!response.ok||!response.body) throw new Error(`Music server returned ${response.status}.`);
@@ -348,15 +350,7 @@ function playTrack(track) {
     document.querySelectorAll('.music-card.playing').forEach((el)=>el.classList.remove('playing'));
     const el=document.querySelector(`.music-card[data-id="${track.id}"]`);
     if (el) el.classList.add('playing');
-    const playback=window.__NEO_MUSIC_PLAYBACK__;
-    if (playback&&typeof playback.play==='function') {
-        playback.play(audioEl,track).catch((err)=>{
-            if (err?.name==='AbortError') return;
-            console.error('playback failed',err);
-            npmTrackArtist.textContent='Playback unavailable — choose another track';
-            setPlayButtonState(false);
-        });
-    } else if (window.NEO_PROXY_CLIENT) {
+    if (window.NEO_PROXY_CLIENT&&typeof window.NEO_PROXY_CLIENT.media==='function') {
         const requestedId=String(track.id);
         npmTrackArtist.textContent='Connecting through NEO proxy…';
         window.NEO_PROXY_CLIENT.media(url).then((route)=>{
@@ -370,8 +364,8 @@ function playTrack(track) {
             setPlayButtonState(false);
         });
     } else {
-        audioEl.src=url;
-        audioEl.play().catch((err)=>console.error('playback failed',err));
+        npmTrackArtist.textContent='NEO web proxy unavailable';
+        setPlayButtonState(false);
     }
 }
 

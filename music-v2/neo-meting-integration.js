@@ -25,10 +25,9 @@
     }
   });
 
-  // Keep every Music network request on the shared NEO resource route when
-  // the app is hosted inside the desktop. Optional lyrics providers are muted
-  // in a standalone preview because they commonly reject browser CORS and
-  // must never break otherwise-working search or playback.
+  // Keep every external Music request on the shared NEO web route. There is
+  // intentionally no direct-network fallback: restricted ChromeOS networks
+  // otherwise get a mixture of proxied catalogue data and blocked media.
   var nativeFetch = window.fetch.bind(window);
   var optionalLyricsHosts = /(?:lyrics|translate)/i;
   window.fetch = function (input, options) {
@@ -48,6 +47,6 @@
         return nativeFetch(route, options);
       });
     }
-    return nativeFetch(input, options);
+    return Promise.reject(new Error("NEO Music requires the NEO web proxy for external requests."));
   };
 })();
