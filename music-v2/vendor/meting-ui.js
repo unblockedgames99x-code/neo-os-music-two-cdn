@@ -1,6 +1,7 @@
 lucide.createIcons();
 
 const API_BASE=String(window.__NEO_MUSIC_SERVER_ORIGIN__||'').replace(/\/+$/,'');
+const MUSIC_API=window.__NEO_MUSIC_API__||{};
 const FALLBACK_COVER='./assets/cover-fallback.svg';
 const FALLBACK_COVER_URL=new URL(FALLBACK_COVER,document.baseURI).href;
 const HOME_CACHE_KEY='neo-music-home-v2';
@@ -83,7 +84,7 @@ function coverUrl(value) {
     const cover=String(value||'').trim();
     if (!cover) return FALLBACK_COVER_URL;
     try {
-        const parsed=new URL(cover,document.baseURI);
+        const parsed=new URL(cover,cover.startsWith('/')&&MUSIC_API.base?MUSIC_API.base:document.baseURI);
         return ['http:','https:','data:','blob:'].includes(parsed.protocol)?parsed.href:FALLBACK_COVER_URL;
     } catch (err) {
         return FALLBACK_COVER_URL;
@@ -101,7 +102,7 @@ function applyCoverFallback(image,value) {
         image.classList.add('is-fallback-cover');
         image.src=FALLBACK_COVER_URL;
     };
-    if (/^https?:/i.test(cover)) {
+    if (/^https?:/i.test(cover)&&!isMusicRelayUrl(cover)) {
         image.src=FALLBACK_COVER_URL;
         if(window.NEO_PROXY_CLIENT&&typeof window.NEO_PROXY_CLIENT.image==='function') {
             window.NEO_PROXY_CLIENT.image(cover).then((route)=>{if(image.isConnected) image.src=route;}).catch(()=>{});
@@ -110,6 +111,18 @@ function applyCoverFallback(image,value) {
 }
 
 window.NEO_MUSIC_COVERS=Object.freeze({fallback:FALLBACK_COVER,url:coverUrl,set:applyCoverFallback});
+
+function normalizeTrack(track) {
+    if(!track||track.id==null)return null;
+    const id=String(track.id).trim();
+    const title=String(track.title||track.name||'').trim();
+    const artist=String(track.artist||track.uploader||'Unknown artist').trim();
+    if(!id||!title)return null;
+    let thumb=String(track.thumb||track.thumbnail||track.cover||'').trim();
+    if(thumb&&MUSIC_API.coverUrl)thumb=MUSIC_API.coverUrl(thumb);
+    const duration=Number(track.duration||0);
+    return Object.assign({},track,{id,title,artist,album:String(track.album||''),duration:Number.isFinite(duration)?duration:0,thumb});
+}
 
 function openMusicEventStream(url) {
     const controller=new AbortController();
@@ -200,7 +213,7 @@ function renderCard(track) {
     return card;
 }
 
-function searchVinyl(query) {
+async function searchVinyl(query) {
     if (currentEventSource) {
         currentEventSource.close();
         currentEventSource=null;
@@ -211,30 +224,25 @@ function searchVinyl(query) {
     }
     cardGrid.className='card-grid';
     showCatalogStatus('Searching music…','Connecting to the music service.');
-    const url=`${API_BASE}/music/v1/search?q=${encodeURIComponent(query)}&limit=20`;
-    const es=openMusicEventStream(url);
-    currentEventSource=es;
-    es.onmessage=(event)=>{
-        if (event.data==='[DONE]') {
-            es.close();
-            currentEventSource=null;
-            if (!hasCatalogResults()) showCatalogStatus('No songs found','Try a different song, artist, or album.',()=>searchVinyl(query),'Search again');
-            return;
-        }
-        try {
-            const track=JSON.parse(event.data);
-            clearCatalogStatus();
-            cardGrid.appendChild(renderCard(track));
-            lucide.createIcons();
-        } catch (err) {
-            console.error('failed to parse track',err,event.data);
-        }
-    };
-    es.onerror=()=>{
-        es.close();
+    const controller=new AbortController();
+    currentEventSource={close(){controller.abort();}};
+    try {
+        const url=MUSIC_API.searchUrl?MUSIC_API.searchUrl(query):`${API_BASE}/_o/m/search?q=${encodeURIComponent(query)}`;
+        const response=await fetch(url,{signal:controller.signal,cache:'no-store',credentials:'omit',headers:{Accept:'application/json'}});
+        if(!response.ok)throw new Error(`Music server returned ${response.status}.`);
+        const payload=await response.json();
+        const tracks=(Array.isArray(payload)?payload:(Array.isArray(payload?.results)?payload.results:[])).map(normalizeTrack).filter(Boolean).slice(0,20);
+        if(controller.signal.aborted)return;
         currentEventSource=null;
-        if (!hasCatalogResults()) showCatalogStatus('Music server unavailable','The music service did not answer. Check your connection, then try again.',()=>searchVinyl(query));
-    };
+        cardGrid.replaceChildren();
+        tracks.forEach((track)=>cardGrid.appendChild(renderCard(track)));
+        if(tracks.length){clearCatalogStatus();lucide.createIcons();}
+        else showCatalogStatus('No songs found','Try a different song, artist, or album.',()=>searchVinyl(query),'Search again');
+    } catch(err) {
+        if(err?.name==='AbortError')return;
+        currentEventSource=null;
+        showCatalogStatus('Music server unavailable','The music service did not answer. Check your connection, then try again.',()=>searchVinyl(query));
+    }
 }
 
 searchInput.addEventListener('input',(e)=>{
@@ -257,9 +265,9 @@ function renderSection(title,tracks) {
 function validHomeSections(value) {
     if (!Array.isArray(value)) return [];
     return value.map((entry)=>{
-        const section=String(entry?.section||'').trim();
-        const tracks=Array.isArray(entry?.tracks)?entry.tracks.filter((track)=>
-            track&&/^[A-Za-z0-9_-]{6,20}$/.test(String(track.id||''))&&String(track.title||'').trim()&&String(track.artist||'').trim()
+        const section=String(entry?.section||entry?.title||'').trim();
+        const tracks=Array.isArray(entry?.tracks)?entry.tracks.map(normalizeTrack).filter((track)=>
+            track&&/^[A-Za-z0-9:_-]{1,160}$/.test(String(track.id||''))&&track.title&&track.artist
         ).slice(0,10):[];
         return section&&tracks.length?{section,tracks}:null;
     }).filter(Boolean).slice(0,8);
@@ -284,7 +292,7 @@ function renderHomeSnapshot(sections) {
     lucide.createIcons();
 }
 
-function fetchHome() {
+async function fetchHome() {
     if (currentEventSource) {
         currentEventSource.close();
         currentEventSource=null;
@@ -292,39 +300,22 @@ function fetchHome() {
     cardGrid.className='home-sections';
     const homeSnapshot=readHomeSnapshot();
     renderHomeSnapshot(homeSnapshot.length?homeSnapshot:HOME_STARTER_SECTIONS);
-    const url=`${API_BASE}/music/v1/home?limit=10`;
-    const es=openMusicEventStream(url);
-    currentEventSource=es;
-    const liveSections=[];
-    let liveHomeStarted=false;
-    es.onmessage=(event)=>{
-        if (event.data==='[DONE]') {
-            es.close();
-            currentEventSource=null;
-            if (liveSections.length) saveHomeSnapshot(liveSections);
-            if (!hasCatalogResults()) showCatalogStatus('Music server unavailable','DrFrost did not return any music.',fetchHome);
-            return;
-        }
-        try {
-            const {section,tracks}=JSON.parse(event.data);
-            const parsed=validHomeSections([{section,tracks}])[0];
-            if (!parsed) return;
-            liveSections.push(parsed);
-            if (!liveHomeStarted) {
-                cardGrid.replaceChildren();
-                liveHomeStarted=true;
-            }
-            cardGrid.appendChild(renderSection(parsed.section,parsed.tracks));
-            lucide.createIcons();
-        } catch (err) {
-            console.error('failed to parse home section',err,event.data);
-        }
-    };
-    es.onerror=()=>{
-        es.close();
+    const controller=new AbortController();
+    currentEventSource={close(){controller.abort();}};
+    try {
+        const url=MUSIC_API.homeUrl?MUSIC_API.homeUrl():`${API_BASE}/_o/m/discover`;
+        const response=await fetch(url,{signal:controller.signal,cache:'no-store',credentials:'omit',headers:{Accept:'application/json'}});
+        if(!response.ok)throw new Error(`Music server returned ${response.status}.`);
+        const liveSections=validHomeSections(await response.json());
+        if(controller.signal.aborted)return;
         currentEventSource=null;
-        if (!hasCatalogResults()) showCatalogStatus('Music server unavailable','The music service did not answer. Check your connection, then try again.',fetchHome);
-    };
+        if(liveSections.length){saveHomeSnapshot(liveSections);renderHomeSnapshot(liveSections);}
+        else if(!hasCatalogResults())showCatalogStatus('Music server unavailable','ScholarNook did not return any music.',fetchHome);
+    } catch(err) {
+        if(err?.name==='AbortError')return;
+        currentEventSource=null;
+        if(!hasCatalogResults())showCatalogStatus('Music server unavailable','The music service did not answer. Check your connection, then try again.',fetchHome);
+    }
 }
 
 function playTrack(track) {
@@ -333,7 +324,7 @@ function playTrack(track) {
         showNPView();
         return;
     }
-    const url=`${API_BASE}/music/v1/audio/${encodeURIComponent(track.id)}`;
+    const url=MUSIC_API.trackUrl?MUSIC_API.trackUrl(track.id):`${API_BASE}/_o/m/stream/${encodeURIComponent(track.id)}`;
     if (!audioEl) {
         audioEl=new Audio();
         audioEl.crossOrigin='anonymous';
